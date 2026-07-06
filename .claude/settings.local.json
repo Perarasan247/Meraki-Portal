@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -V)",
+      "Bash(npm create *)",
+      "Bash(npm install *)",
+      "Read(//home/alai-labs/.claude/skills/ui-ux-pro-max-skill/.claude/skills/ui-ux-pro-max/**)",
+      "Bash(python3 scripts/search.py \"SaaS admin dashboard internship training management portal premium clean modern\" --design-system -p \"Meraki Portal\" -f markdown)",
+      "Bash(python3 scripts/search.py \"saas dashboard admin panel productivity\" --domain color -n 5)",
+      "Bash(python3 scripts/search.py \"dashboard analytics stat cards trend comparison\" --domain chart -n 5)",
+      "Bash(python3 scripts/search.py \"empty state sidebar navigation dashboard\" --domain ux -n 8)",
+      "Bash(python3 -c \"import ast; [ast.parse\\(open\\(f\\).read\\(\\)\\) for f in __import__\\('glob'\\).glob\\('app/**/*.py', recursive=True\\)]\")",
+      "Bash(npx tsc *)",
+      "Bash(echo \"exit code: $?\")",
+      "Bash(rm -f public/hero.png public/react.svg public/vite.svg public/icons.svg src/assets/react.svg)",
+      "Bash(rmdir src/assets)",
+      "Bash(npx eslint *)",
+      "Bash(npx oxlint *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(cat /tmp/uvicorn.log)",
+      "Read(//tmp/**)",
+      "Bash(python3 -c ' *)",
+      "Bash(ls -la /tmp/uvicorn.log; rm -f /tmp/uvicorn.log)",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(curl -s -o /dev/null -w \"docs: %{http_code}\\\\n\" http://localhost:8000/docs)",
+      "Bash(curl -s http://localhost:8000/openapi.json)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"vite: %{http_code}\\\\n\" http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/)",
+      "Bash(curl -s http://localhost:5173/ -o /dev/null -w \"%{http_code}\\\\n\")",
+      "Bash(curl -s http://localhost:5173/src/main.tsx -o /dev/null -w \"main.tsx: %{http_code}\\\\n\")",
+      "Bash(pkill -f \"node .*vite\")"
+    ],
+    "additionalDirectories": [
+      "/tmp"
+    ]
+  }
+}
