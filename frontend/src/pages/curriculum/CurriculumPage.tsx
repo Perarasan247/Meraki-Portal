@@ -1,17 +1,18 @@
 import * as React from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, BookOpen, CheckCircle2, FileEdit, Layers, GripVertical, Trash2 } from 'lucide-react'
+import { Download, Plus, BookOpen, CheckCircle2, FileEdit, Layers, GripVertical, Trash2, Clock, ChevronDown, Wrench } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
 import { StatCard } from '@/components/ui/stat-card'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Textarea } from '@/components/ui/input'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { StatusBadge } from '@/components/ui/badge'
+import { StatusBadge, Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
+import { Skeleton, TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import type { Curriculum, CurriculumPhase } from '@/lib/types'
@@ -77,34 +78,35 @@ export default function CurriculumPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold">Curriculum Builder</h1>
-          <p className="mt-1 text-sm text-(--color-muted-foreground)">Design and publish program curricula.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-(--color-border) p-1">
-            {(['dashboard', 'list'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
-                  view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
-                )}
-              >
-                {v === 'dashboard' ? 'Dashboard' : 'List View'}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export Excel
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" /> New Curriculum
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Curriculum"
+        subtitle="Programs, syllabi & learning phases"
+        icon={BookOpen}
+        actions={
+          <>
+            <div className="flex rounded-lg border border-(--color-border) p-1">
+              {(['dashboard', 'list'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+                    view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
+                  )}
+                >
+                  {v === 'dashboard' ? 'Dashboard' : 'Outline'}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export Excel
+            </Button>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" /> New Curriculum
+            </Button>
+          </>
+        }
+      />
 
       {view === 'dashboard' ? (
         <CurriculumDashboard isLoading={isLoading} stats={stats} byProgram={byProgram} onViewAll={() => setView('list')} />
@@ -176,6 +178,109 @@ function CurriculumDashboard({
   )
 }
 
+function PhaseTimeline({ phases }: { phases: CurriculumPhase[] }) {
+  if (phases.length === 0) {
+    return (
+      <p className="pl-1 text-sm text-(--color-muted-foreground)">No phases defined yet. Edit this curriculum to build its syllabus.</p>
+    )
+  }
+  const ordered = [...phases].sort((a, b) => a.order - b.order)
+  return (
+    <ol className="relative space-y-5">
+      {ordered.map((phase, i) => (
+        <li key={phase.id} className="relative flex gap-4">
+          {/* connector line */}
+          {i < ordered.length - 1 && (
+            <span aria-hidden className="absolute left-4 top-9 bottom-[-1.75rem] w-px bg-(--color-border)" />
+          )}
+          {/* node */}
+          <div className="relative z-10 flex h-8 w-8 flex-none items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold tabular-nums text-indigo-700 ring-4 ring-(--color-card) dark:bg-indigo-500/15 dark:text-indigo-300">
+            {phase.order}
+          </div>
+          <div className="flex-1 pt-0.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium text-(--color-foreground)">{phase.title || 'Untitled phase'}</p>
+              {phase.estimated_duration && (
+                <span className="inline-flex items-center gap-1 text-xs text-(--color-muted-foreground)">
+                  <Clock className="h-3.5 w-3.5" /> {phase.estimated_duration}
+                </span>
+              )}
+            </div>
+            {phase.description && (
+              <p className="mt-1 text-sm text-(--color-muted-foreground)">{phase.description}</p>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function CurriculumOutlineCard({
+  curriculum, expanded, onToggle, onEdit, onTogglePublish, publishPending,
+}: {
+  curriculum: Curriculum
+  expanded: boolean
+  onToggle: () => void
+  onEdit: (c: Curriculum) => void
+  onTogglePublish: (c: Curriculum) => void
+  publishPending: boolean
+}) {
+  const navigate = useNavigate()
+  return (
+    <Card>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={expanded}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        className="flex cursor-pointer flex-wrap items-start justify-between gap-3 p-5"
+      >
+        <div className="flex items-start gap-3">
+          <ChevronDown
+            className={cn('mt-1 h-4 w-4 flex-none text-(--color-muted-foreground) transition-transform', expanded ? 'rotate-0' : '-rotate-90')}
+          />
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-(--color-primary)">{curriculum.program}</p>
+            <h3 className="font-display text-lg font-bold leading-tight text-(--color-foreground)">{curriculum.title}</h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <StatusBadge status={curriculum.status} />
+              <Badge variant="default" className="tabular-nums">
+                <Layers className="h-3 w-3" /> {curriculum.phases.length} {curriculum.phases.length === 1 ? 'phase' : 'phases'}
+              </Badge>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" onClick={() => navigate(`/app/curriculum/${curriculum.id}`)}>
+            <Wrench className="h-3.5 w-3.5" /> Build Content
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => onEdit(curriculum)}>Edit</Button>
+          <Button
+            size="sm"
+            variant={curriculum.status === 'Published' ? 'ghost' : 'accent'}
+            loading={publishPending}
+            onClick={() => onTogglePublish(curriculum)}
+          >
+            {curriculum.status === 'Published' ? 'Unpublish' : 'Publish'}
+          </Button>
+        </div>
+      </div>
+      {expanded && (
+        <CardContent className="border-t border-(--color-border) pt-5">
+          <PhaseTimeline phases={curriculum.phases} />
+        </CardContent>
+      )}
+    </Card>
+  )
+}
+
 function CurriculumListView({
   curricula, isLoading, onEdit, onTogglePublish, publishPending,
 }: {
@@ -185,52 +290,45 @@ function CurriculumListView({
   onTogglePublish: (c: Curriculum) => void
   publishPending: boolean
 }) {
-  return (
-    <Card>
-      <CardHeader><CardTitle>All Curricula</CardTitle></CardHeader>
-      <CardContent>
-        {isLoading ? (
-          <TableSkeleton rows={8} />
-        ) : curricula.length === 0 ? (
+  const [expandedId, setExpandedId] = React.useState<string | null>(null)
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Card key={i} className="p-5">
+            <Skeleton className="h-5 w-48" />
+            <Skeleton className="mt-2 h-4 w-24" />
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
+  if (curricula.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-4">
           <EmptyState icon={BookOpen} title="No curricula yet" description="Click New Curriculum to get started." />
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Program</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Phases</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {curricula.map((c) => (
-                <TableRow key={c.id}>
-                  <TableCell className="cursor-pointer font-medium" onClick={() => onEdit(c)}>{c.title}</TableCell>
-                  <TableCell>{c.program}</TableCell>
-                  <TableCell><StatusBadge status={c.status} /></TableCell>
-                  <TableCell>{c.phases.length}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Button size="sm" variant="outline" onClick={() => onEdit(c)}>Edit</Button>
-                      <Button
-                        size="sm"
-                        variant={c.status === 'Published' ? 'ghost' : 'accent'}
-                        loading={publishPending}
-                        onClick={() => onTogglePublish(c)}
-                      >
-                        {c.status === 'Published' ? 'Unpublish' : 'Publish'}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      {curricula.map((c) => (
+        <CurriculumOutlineCard
+          key={c.id}
+          curriculum={c}
+          expanded={expandedId === c.id}
+          onToggle={() => setExpandedId((prev) => (prev === c.id ? null : c.id))}
+          onEdit={onEdit}
+          onTogglePublish={onTogglePublish}
+          publishPending={publishPending}
+        />
+      ))}
+    </div>
   )
 }
 

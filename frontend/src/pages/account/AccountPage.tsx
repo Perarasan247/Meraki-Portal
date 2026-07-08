@@ -1,15 +1,35 @@
 import * as React from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { UserCircle, Download, Upload, DatabaseBackup } from 'lucide-react'
+import { UserCircle, Download, Upload, DatabaseBackup, ShieldCheck } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
 import { StatCardSkeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { formatDate } from '@/lib/utils'
-import type { BackupCounts, RestoreResult, Profile } from '@/lib/types'
+import { Badge } from '@/components/ui/badge'
+import { cn, formatDate } from '@/lib/utils'
+import { MODULE_META } from '@/lib/types'
+import type { BackupCounts, RestoreResult, Profile, UserRole, ModuleKey } from '@/lib/types'
+
+const ROLE_VARIANT: Record<UserRole, React.ComponentProps<typeof Badge>['variant']> = {
+  super_admin: 'primary',
+  branch_admin: 'info',
+  staff: 'success',
+  custom: 'warning',
+}
+
+function initials(name?: string | null): string {
+  if (!name) return '?'
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
+}
 
 export default function AccountPage() {
   const { profile: authProfile } = useAuth()
@@ -19,25 +39,88 @@ export default function AccountPage() {
     initialData: authProfile ?? undefined,
   })
 
+  const roleLabel = profile?.role ? profile.role.replace('_', ' ') : '—'
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 font-display text-2xl font-bold">
-          <UserCircle className="h-6 w-6 text-(--color-primary)" /> My Account
-        </h1>
-        <p className="mt-1 text-sm text-(--color-muted-foreground)">Your profile details and data backup tools.</p>
-      </div>
+      <PageHeader title="My Account" subtitle="Profile & preferences" icon={UserCircle} />
 
+      {/* Profile identity summary */}
       <Card>
-        <CardHeader><CardTitle>Profile</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Name" value={profile?.full_name} />
-          <Field label="User ID" value={profile?.id} mono />
-          <Field label="Email" value={profile?.email} />
-          <Field label="Mobile" value={profile?.mobile ?? '—'} />
-          <Field label="Role" value={profile?.role?.replace('_', ' ')} className="capitalize" />
-          <Field label="Registered" value={profile?.registered_at ? formatDate(profile.registered_at) : '—'} />
-          <Field label="Last Login" value={profile?.last_login ? formatDate(profile.last_login) : 'Never'} />
+        <CardContent className="flex flex-col items-center gap-4 p-5 sm:flex-row sm:items-center">
+          <div
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-(--color-sidebar-active) font-display text-xl font-bold text-(--color-primary)"
+            aria-hidden="true"
+          >
+            {initials(profile?.full_name)}
+          </div>
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <h2 className="font-display text-xl font-bold leading-tight text-(--color-foreground)">
+              {profile?.full_name ?? '—'}
+            </h2>
+            <p className="mt-0.5 truncate text-sm text-(--color-muted-foreground)">{profile?.email ?? '—'}</p>
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              {profile?.role && (
+                <Badge variant={ROLE_VARIANT[profile.role]} className="capitalize">
+                  {roleLabel}
+                </Badge>
+              )}
+              {profile?.branch_id && (
+                <span className="text-xs text-(--color-muted-foreground)">Branch: {profile.branch_id}</span>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Profile information */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Profile information</CardTitle>
+          <CardDescription>Your account identity as it appears across the portal.</CardDescription>
+        </CardHeader>
+        <CardContent className="divide-y divide-(--color-border)">
+          <SettingRow label="Full name" value={profile?.full_name} />
+          <SettingRow label="Email" value={profile?.email} />
+          <SettingRow label="Mobile" value={profile?.mobile ?? '—'} />
+          <SettingRow label="User ID" value={profile?.id} mono />
+          <SettingRow label="Registered" value={profile?.registered_at ? formatDate(profile.registered_at) : '—'} />
+          <SettingRow label="Last login" value={profile?.last_login ? formatDate(profile.last_login) : 'Never'} />
+        </CardContent>
+      </Card>
+
+      {/* Access & role */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-(--color-primary)" /> Access & role
+          </CardTitle>
+          <CardDescription>Modules you can access are managed by an administrator.</CardDescription>
+        </CardHeader>
+        <CardContent className="divide-y divide-(--color-border)">
+          <SettingRow label="Role">
+            {profile?.role ? (
+              <Badge variant={ROLE_VARIANT[profile.role]} className="capitalize">
+                {roleLabel}
+              </Badge>
+            ) : (
+              <span className="text-sm text-(--color-muted-foreground)">—</span>
+            )}
+          </SettingRow>
+          <SettingRow label="Permission level" value={profile?.permission_level} className="capitalize" />
+          <SettingRow label="Modules">
+            {profile?.modules?.length ? (
+              <div className="flex flex-wrap gap-1.5">
+                {profile.modules.map((m: ModuleKey) => (
+                  <Badge key={m} variant="default">
+                    {MODULE_META[m]?.label ?? m}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <span className="text-sm text-(--color-muted-foreground)">No modules assigned</span>
+            )}
+          </SettingRow>
         </CardContent>
       </Card>
 
@@ -47,11 +130,33 @@ export default function AccountPage() {
   )
 }
 
-function Field({ label, value, mono, className }: { label: string; value?: string | null; mono?: boolean; className?: string }) {
+/**
+ * Two-column labeled settings row: label on the left, read-only value or a
+ * custom control on the right. Stacks vertically on mobile.
+ */
+function SettingRow({
+  label,
+  value,
+  mono,
+  className,
+  children,
+}: {
+  label: string
+  value?: string | null
+  mono?: boolean
+  className?: string
+  children?: React.ReactNode
+}) {
   return (
-    <div>
-      <p className="text-xs text-(--color-muted-foreground)">{label}</p>
-      <p className={`mt-1 text-sm font-medium ${mono ? 'font-mono' : ''} ${className ?? ''}`}>{value ?? '—'}</p>
+    <div className="grid grid-cols-1 gap-1 py-3.5 sm:grid-cols-[minmax(0,180px)_1fr] sm:items-center sm:gap-4">
+      <p className="text-sm font-medium text-(--color-foreground)">{label}</p>
+      <div className="min-w-0">
+        {children ?? (
+          <p className={cn('truncate text-sm text-(--color-muted-foreground)', mono && 'font-mono', className)}>
+            {value ?? '—'}
+          </p>
+        )}
+      </div>
     </div>
   )
 }
@@ -80,11 +185,14 @@ function BackupSection() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Data Backup</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Data backup</CardTitle>
+        <CardDescription>
+          Export a full JSON snapshot of your actual database records — enquiries, enrollments, batches, expenses, and
+          curricula.
+        </CardDescription>
+      </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-(--color-muted-foreground)">
-          Export a full JSON snapshot of your actual database records — enquiries, enrollments, batches, expenses, and curricula.
-        </p>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
@@ -98,7 +206,7 @@ function BackupSection() {
             </>
           )}
         </div>
-        <Button onClick={handleDownload}>
+        <Button className="cursor-pointer" onClick={handleDownload}>
           <Download className="h-4 w-4" /> Download Backup (.json)
         </Button>
       </CardContent>
@@ -157,13 +265,16 @@ function RestoreSection() {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Restore from Backup</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Restore from backup</CardTitle>
+        <CardDescription>
+          Restore your records from a previously downloaded backup file. Records are re-stamped to your branch on
+          restore.
+        </CardDescription>
+      </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-(--color-muted-foreground)">
-          Restore your records from a previously downloaded backup file. Records are re-stamped to your branch on restore.
-        </p>
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+          <Button variant="outline" className="cursor-pointer" onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4" /> Choose Backup File
           </Button>
           <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileChange} />
@@ -176,8 +287,12 @@ function RestoreSection() {
               {previewCounts.map(([table, count]) => `${table}: ${count} row(s)\n`).join('')}
             </pre>
             <div className="flex gap-2">
-              <Button loading={restoreMutation.isPending} onClick={handleConfirm}>Confirm Restore</Button>
-              <Button variant="ghost" onClick={handleReset}>Cancel</Button>
+              <Button className="cursor-pointer" loading={restoreMutation.isPending} onClick={handleConfirm}>
+                Confirm Restore
+              </Button>
+              <Button variant="ghost" className="cursor-pointer" onClick={handleReset}>
+                Cancel
+              </Button>
             </div>
           </div>
         )}
@@ -187,14 +302,18 @@ function RestoreSection() {
             <p className="font-medium">Restored:</p>
             <ul className="mt-1 space-y-0.5 text-(--color-muted-foreground)">
               {Object.entries(result.restored).map(([table, count]) => (
-                <li key={table}>{table}: {count}</li>
+                <li key={table}>
+                  {table}: {count}
+                </li>
               ))}
             </ul>
             {result.errors.length > 0 && (
               <>
                 <p className="mt-2 font-medium text-(--color-destructive)">Errors:</p>
                 <ul className="mt-1 space-y-0.5 text-(--color-muted-foreground)">
-                  {result.errors.map((err, i) => <li key={i}>{err}</li>)}
+                  {result.errors.map((err, i) => (
+                    <li key={i}>{err}</li>
+                  ))}
                 </ul>
               </>
             )}

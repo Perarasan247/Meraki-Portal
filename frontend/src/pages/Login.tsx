@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Sparkles } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -22,7 +22,7 @@ export default function Login() {
       toast.error(error.message)
       return
     }
-    navigate('/', { replace: true })
+    navigate('/app', { replace: true })
   }
 
   return (
@@ -64,6 +64,12 @@ export default function Login() {
             Sign in
           </Button>
         </form>
+        <Link
+          to="/"
+          className="mt-6 block text-center text-sm text-(--color-muted-foreground) hover:text-(--color-primary)"
+        >
+          ← Back to website
+        </Link>
       </Card>
     </div>
   )

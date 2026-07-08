@@ -30,7 +30,7 @@ const MOCK_PROFILE: Profile = {
   role: 'super_admin',
   modules: [
     'enquiry', 'enrollment', 'batch_management', 'batch_execution',
-    'curriculum', 'expense', 'marketing', 'reports', 'user_management', 'my_account',
+    'curriculum', 'expense', 'user_management', 'my_account',
   ],
   permission_level: 'Full Access',
   last_login: new Date().toISOString(),

@@ -1,23 +1,43 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import type { UseMutationResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, MessagesSquare, CheckCircle2, Phone, ArrowRightLeft } from 'lucide-react'
+import { Download, Plus, MessagesSquare, CheckCircle2, Phone, ArrowRight } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { StatCard } from '@/components/ui/stat-card'
+import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select } from '@/components/ui/input'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
-import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
+import { TableSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
 import { cn, formatDate } from '@/lib/utils'
 import type { Enquiry, EnquiryStatus } from '@/lib/types'
 
 const STATUSES: EnquiryStatus[] = ['New', 'Contacted', 'Interested', 'Converted']
 const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
+
+/** Move-forward target for each stage (Interested only moves via Convert). */
+const NEXT_STATUS: Record<EnquiryStatus, EnquiryStatus | null> = {
+  New: 'Contacted',
+  Contacted: 'Interested',
+  Interested: null,
+  Converted: null,
+}
+
+/** Per-stage accent tone — keeps the board visually distinct from table sections. */
+const STATUS_META: Record<EnquiryStatus, { accent: string; pill: string }> = {
+  New: { accent: 'bg-cyan-500', pill: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300' },
+  Contacted: { accent: 'bg-amber-500', pill: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
+  Interested: { accent: 'bg-indigo-500', pill: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' },
+  Converted: { accent: 'bg-emerald-500', pill: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+}
+
+type UpdateStatusMutation = UseMutationResult<unknown, Error, { id: string; status: EnquiryStatus }, unknown>
+type ConvertMutation = UseMutationResult<unknown, Error, string, unknown>
 
 function useEnquiries() {
   const branchParam = useBranchQueryParam()
@@ -28,9 +48,10 @@ function useEnquiries() {
 }
 
 export default function EnquiryPage() {
-  const [view, setView] = React.useState<'dashboard' | 'list'>('dashboard')
+  const [view, setView] = React.useState<'board' | 'list'>('board')
   const [formOpen, setFormOpen] = React.useState(false)
   const { data: enquiries, isLoading } = useEnquiries()
+  const queryClient = useQueryClient()
 
   const stats = React.useMemo(() => {
     const list = enquiries ?? []
@@ -43,32 +64,25 @@ export default function EnquiryPage() {
     }
   }, [enquiries])
 
-  const byProgram = React.useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of enquiries ?? []) map.set(e.program, (map.get(e.program) ?? 0) + 1)
-    return Array.from(map.entries())
-  }, [enquiries])
+  const updateStatus: UpdateStatusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: EnquiryStatus }) =>
+      api.patch(`/enquiries/${id}`, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['enquiries'] })
+      toast.success('Status updated')
+    },
+    onError: () => toast.error('Could not update status'),
+  })
 
-  const byReference = React.useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of enquiries ?? []) {
-      const key = e.reference_source || 'Unknown'
-      map.set(key, (map.get(key) ?? 0) + 1)
-    }
-    return Array.from(map.entries())
-  }, [enquiries])
-
-  const byYear = React.useMemo(() => {
-    const map = new Map<string, number>()
-    for (const e of enquiries ?? []) {
-      const key = e.year_of_study || 'Unspecified'
-      map.set(key, (map.get(key) ?? 0) + 1)
-    }
-    return Array.from(map.entries())
-  }, [enquiries])
-
-  const recent = (enquiries ?? []).slice(0, 5)
-  const maxYearCount = Math.max(1, ...byYear.map(([, c]) => c))
+  const convertMutation: ConvertMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/enquiries/${id}/convert`, { total_fee: 0 }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['enquiries'] })
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] })
+      toast.success('Converted to enrollment')
+    },
+    onError: () => toast.error('Conversion failed'),
+  })
 
   async function handleExport() {
     try {
@@ -80,48 +94,56 @@ export default function EnquiryPage() {
 
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Enquiry Pipeline"
+        subtitle="Track leads from first contact to conversion"
+        icon={MessagesSquare}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export Excel
+            </Button>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" /> New Enquiry
+            </Button>
+          </>
+        }
+      />
+
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold">Enquiry Management</h1>
-          <p className="mt-1 text-sm text-(--color-muted-foreground)">Track leads from first contact to conversion.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-(--color-border) p-1">
-            {(['dashboard', 'list'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
-                  view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
-                )}
-              >
-                {v === 'dashboard' ? 'Dashboard' : 'List View'}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export Excel
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" /> New Enquiry
-          </Button>
+        <FunnelStrip stats={stats} />
+        <div className="flex rounded-lg border border-(--color-border) p-1">
+          {(['board', 'list'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+                view === v
+                  ? 'bg-(--color-primary) text-(--color-primary-foreground)'
+                  : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
+              )}
+            >
+              {v === 'board' ? 'Board' : 'List'}
+            </button>
+          ))}
         </div>
       </div>
 
-      {view === 'dashboard' ? (
-        <EnquiryDashboard
+      {view === 'board' ? (
+        <EnquiryBoard
+          enquiries={enquiries ?? []}
           isLoading={isLoading}
-          stats={stats}
-          byProgram={byProgram}
-          byReference={byReference}
-          byYear={byYear}
-          maxYearCount={maxYearCount}
-          recent={recent}
-          onViewAll={() => setView('list')}
+          updateStatus={updateStatus}
+          convertMutation={convertMutation}
         />
       ) : (
-        <EnquiryListView enquiries={enquiries ?? []} isLoading={isLoading} />
+        <EnquiryListView
+          enquiries={enquiries ?? []}
+          isLoading={isLoading}
+          updateStatus={updateStatus}
+          convertMutation={convertMutation}
+        />
       )}
 
       <NewEnquiryDialog open={formOpen} onClose={() => setFormOpen(false)} />
@@ -129,170 +151,155 @@ export default function EnquiryPage() {
   )
 }
 
-function EnquiryDashboard({
-  isLoading, stats, byProgram, byReference, byYear, maxYearCount, recent, onViewAll,
-}: {
-  isLoading: boolean
-  stats: { total: number; new: number; contacted: number; interested: number; converted: number }
-  byProgram: [string, number][]
-  byReference: [string, number][]
-  byYear: [string, number][]
-  maxYearCount: number
-  recent: Enquiry[]
-  onViewAll: () => void
-}) {
+function FunnelStrip({ stats }: { stats: { total: number; new: number; contacted: number; interested: number; converted: number } }) {
+  const segments: { label: string; value: number }[] = [
+    { label: 'Total', value: stats.total },
+    { label: 'New', value: stats.new },
+    { label: 'Contacted', value: stats.contacted },
+    { label: 'Interested', value: stats.interested },
+    { label: 'Converted', value: stats.converted },
+  ]
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {isLoading ? (
-          Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
-        ) : (
-          <>
-            <StatCard label="Total Enquiries" value={stats.total} icon={MessagesSquare} accent="primary" />
-            <StatCard label="New" value={stats.new} icon={Phone} accent="warning" />
-            <StatCard label="Contacted" value={stats.contacted} icon={Phone} accent="primary" />
-            <StatCard label="Interested" value={stats.interested} icon={CheckCircle2} accent="accent" />
-            <StatCard label="Converted" value={stats.converted} icon={ArrowRightLeft} accent="accent" />
-          </>
-        )}
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Enquiries by Program</CardTitle></CardHeader>
-          <CardContent>
-            {byProgram.length === 0 ? (
-              <p className="text-sm text-(--color-muted-foreground)">No data yet</p>
-            ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {byProgram.map(([program, count]) => (
-                  <div key={program} className="rounded-lg border border-(--color-border) p-3">
-                    <p className="text-xs text-(--color-muted-foreground)">{program}</p>
-                    <p className="font-display text-lg font-bold">{count}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader><CardTitle>Enquiries by Reference Source</CardTitle></CardHeader>
-          <CardContent>
-            {byReference.length === 0 ? (
-              <p className="text-sm text-(--color-muted-foreground)">No data yet</p>
-            ) : (
-              <div className="space-y-2">
-                {byReference.map(([source, count]) => (
-                  <div key={source} className="flex items-center justify-between text-sm">
-                    <span className="text-(--color-foreground)">{source}</span>
-                    <span className="font-medium tabular-nums text-(--color-muted-foreground)">{count}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle>Enquiries by Year of Study</CardTitle></CardHeader>
-        <CardContent>
-          {byYear.length === 0 ? (
-            <p className="text-sm text-(--color-muted-foreground)">No data yet</p>
-          ) : (
-            <div className="space-y-3">
-              {byYear.map(([year, count]) => (
-                <div key={year} className="flex items-center gap-3">
-                  <span className="w-24 shrink-0 text-sm text-(--color-muted-foreground)">{year}</span>
-                  <div className="h-2.5 flex-1 rounded-full bg-(--color-muted)">
-                    <div
-                      className="h-2.5 rounded-full bg-(--color-primary) transition-all"
-                      style={{ width: `${(count / maxYearCount) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right text-sm font-medium tabular-nums">{count}</span>
-                </div>
-              ))}
+    <Card className="w-full sm:w-auto">
+      <CardContent className="flex flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
+        {segments.map((s, i) => (
+          <React.Fragment key={s.label}>
+            {i > 0 && <span className="hidden h-6 w-px bg-(--color-border) sm:block" aria-hidden />}
+            <div className="flex items-baseline gap-1.5">
+              <span className="font-display text-lg font-bold tabular-nums text-(--color-foreground)">{s.value}</span>
+              <span className="text-xs text-(--color-muted-foreground)">{s.label}</span>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </React.Fragment>
+        ))}
+      </CardContent>
+    </Card>
+  )
+}
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Recent Enquiries</CardTitle>
-          <button onClick={onViewAll} className="cursor-pointer text-sm font-medium text-(--color-primary) hover:underline">
-            View All
-          </button>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <TableSkeleton />
-          ) : recent.length === 0 ? (
-            <EmptyState
-              icon={MessagesSquare}
-              title="No enquiries yet"
-              description="New leads you capture will show up here."
-            />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Mobile</TableHead>
-                  <TableHead>Program</TableHead>
-                  <TableHead>Year</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recent.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-medium">{e.student_name}</TableCell>
-                    <TableCell>{e.mobile}</TableCell>
-                    <TableCell>{e.program}</TableCell>
-                    <TableCell>{e.year_of_study ?? '—'}</TableCell>
-                    <TableCell>{e.reference_source ?? '—'}</TableCell>
-                    <TableCell><StatusBadge status={e.status} /></TableCell>
-                    <TableCell>{formatDate(e.created_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+function EnquiryBoard({
+  enquiries,
+  isLoading,
+  updateStatus,
+  convertMutation,
+}: {
+  enquiries: Enquiry[]
+  isLoading: boolean
+  updateStatus: UpdateStatusMutation
+  convertMutation: ConvertMutation
+}) {
+  const grouped = React.useMemo(() => {
+    const map: Record<EnquiryStatus, Enquiry[]> = { New: [], Contacted: [], Interested: [], Converted: [] }
+    for (const e of enquiries) map[e.status].push(e)
+    return map
+  }, [enquiries])
+
+  return (
+    <div className="flex gap-4 overflow-x-auto pb-2">
+      {STATUSES.map((status) => {
+        const meta = STATUS_META[status]
+        const list = grouped[status]
+        return (
+          <div
+            key={status}
+            className="flex min-w-[15rem] flex-1 flex-col overflow-hidden rounded-xl border border-(--color-border) bg-(--color-card)"
+          >
+            <div className={cn('h-1', meta.accent)} />
+            <div className="flex items-center justify-between px-3 py-2.5">
+              <span className="font-display text-sm font-semibold text-(--color-foreground)">{status}</span>
+              <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums', meta.pill)}>
+                {list.length}
+              </span>
+            </div>
+            <div className="flex max-h-[32rem] flex-col gap-2 overflow-y-auto px-3 pb-3">
+              {isLoading ? (
+                Array.from({ length: 2 }).map((_, i) => <Skeleton key={i} className="h-28 w-full rounded-lg" />)
+              ) : list.length === 0 ? (
+                <p className="py-6 text-center text-xs text-(--color-muted-foreground)">No leads here</p>
+              ) : (
+                list.map((e) => (
+                  <LeadCard
+                    key={e.id}
+                    enquiry={e}
+                    updateStatus={updateStatus}
+                    convertMutation={convertMutation}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function EnquiryListView({ enquiries, isLoading }: { enquiries: Enquiry[]; isLoading: boolean }) {
+function LeadCard({
+  enquiry: e,
+  updateStatus,
+  convertMutation,
+}: {
+  enquiry: Enquiry
+  updateStatus: UpdateStatusMutation
+  convertMutation: ConvertMutation
+}) {
+  const next = NEXT_STATUS[e.status]
+  return (
+    <div className="space-y-2 rounded-lg border border-(--color-border) bg-(--color-muted) p-3">
+      <div>
+        <p className="text-sm font-medium text-(--color-foreground)">{e.student_name}</p>
+        <p className="text-xs text-(--color-muted-foreground)">{e.program}</p>
+      </div>
+      <div className="flex items-center gap-1.5 text-xs text-(--color-muted-foreground)">
+        <Phone className="h-3 w-3 shrink-0" />
+        <span className="tabular-nums">{e.mobile}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {e.year_of_study && <Badge variant="default">{e.year_of_study}</Badge>}
+        {e.reference_source && <Badge variant="info">{e.reference_source}</Badge>}
+      </div>
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <span className="text-[11px] tabular-nums text-(--color-muted-foreground)">{formatDate(e.created_at)}</span>
+        {e.status !== 'Converted' && (
+          <div className="flex items-center gap-1">
+            {next && (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`Move ${e.student_name} to ${next}`}
+                disabled={updateStatus.isPending}
+                onClick={() => updateStatus.mutate({ id: e.id, status: next })}
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              loading={convertMutation.isPending}
+              onClick={() => convertMutation.mutate(e.id)}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Convert
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function EnquiryListView({
+  enquiries,
+  isLoading,
+  updateStatus,
+  convertMutation,
+}: {
+  enquiries: Enquiry[]
+  isLoading: boolean
+  updateStatus: UpdateStatusMutation
+  convertMutation: ConvertMutation
+}) {
   const [search, setSearch] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('')
-  const queryClient = useQueryClient()
-
-  const updateStatus = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: EnquiryStatus }) =>
-      api.patch(`/enquiries/${id}`, { status }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['enquiries'] })
-      toast.success('Status updated')
-    },
-    onError: () => toast.error('Could not update status'),
-  })
-
-  const convertMutation = useMutation({
-    mutationFn: (id: string) => api.post(`/enquiries/${id}/convert`, { total_fee: 0 }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['enquiries'] })
-      queryClient.invalidateQueries({ queryKey: ['enrollments'] })
-      toast.success('Converted to enrollment')
-    },
-    onError: () => toast.error('Conversion failed'),
-  })
 
   const filtered = enquiries.filter((e) => {
     if (statusFilter && e.status !== statusFilter) return false

@@ -8,8 +8,6 @@ export type ModuleKey =
   | 'batch_execution'
   | 'curriculum'
   | 'expense'
-  | 'marketing'
-  | 'reports'
   | 'user_management'
   | 'my_account'
 
@@ -103,6 +101,84 @@ export interface Curriculum {
   created_at: string
 }
 
+// --- LMS (curriculum builder) ---
+export type LessonBlockType = 'text' | 'video' | 'image'
+export type QuizQuestionType = 'single_choice' | 'multi_choice' | 'true_false' | 'short_answer'
+
+export interface LessonBlock {
+  id: string
+  lesson_id: string
+  branch_id: string
+  type: LessonBlockType
+  order_index: number
+  // text: { markdown }, video: { url, youtube_id?, caption? }, image: { url, caption? }
+  content: Record<string, unknown>
+  created_at: string
+}
+
+export interface QuizOption {
+  id: string
+  text: string
+}
+
+export interface QuizQuestion {
+  id: string
+  quiz_id: string
+  branch_id: string
+  prompt: string
+  type: QuizQuestionType
+  order_index: number
+  options: QuizOption[]
+  correct: unknown[] // choice: optionId[]; true_false: [boolean]; short_answer: string[]
+  points: number
+  explanation: string | null
+  created_at: string
+}
+
+export interface Quiz {
+  id: string
+  curriculum_id: string
+  branch_id: string
+  module_id: string | null
+  lesson_id: string | null
+  title: string
+  pass_percentage: number
+  max_attempts: number | null
+  created_at: string
+  questions: QuizQuestion[]
+}
+
+export interface LessonTree {
+  id: string
+  module_id: string
+  branch_id: string
+  title: string
+  order_index: number
+  estimated_minutes: number | null
+  is_published: boolean
+  created_at: string
+  blocks: LessonBlock[]
+  quiz: Quiz | null
+}
+
+export interface ModuleTree {
+  id: string
+  curriculum_id: string
+  branch_id: string
+  title: string
+  description: string | null
+  order_index: number
+  is_published: boolean
+  created_at: string
+  lessons: LessonTree[]
+  quiz: Quiz | null
+}
+
+export interface CurriculumContent {
+  curriculum_id: string
+  modules: ModuleTree[]
+}
+
 export type ExpenseStatus = 'Pending' | 'Approved'
 
 export interface Expense {
@@ -184,15 +260,13 @@ export const MODULE_META: Record<
   ModuleKey,
   { label: string; icon: string; path: string }
 > = {
-  dashboard: { label: 'Dashboard', icon: 'LayoutDashboard', path: '/' },
-  enquiry: { label: 'Enquiry', icon: 'MessagesSquare', path: '/enquiry' },
-  enrollment: { label: 'Enrollment', icon: 'GraduationCap', path: '/enrollment' },
-  batch_management: { label: 'Batch Management', icon: 'CalendarRange', path: '/batches' },
-  batch_execution: { label: 'Batch Execution', icon: 'ListChecks', path: '/batch-execution' },
-  curriculum: { label: 'Curriculum', icon: 'BookOpen', path: '/curriculum' },
-  expense: { label: 'Finance', icon: 'Wallet', path: '/expenses' },
-  marketing: { label: 'Marketing Hub', icon: 'Megaphone', path: '/marketing' },
-  reports: { label: 'AI Reports', icon: 'Sparkles', path: '/reports' },
-  user_management: { label: 'User Management', icon: 'Users', path: '/users' },
-  my_account: { label: 'My Account', icon: 'UserCircle', path: '/account' },
+  dashboard: { label: 'Dashboard', icon: 'LayoutDashboard', path: '/app' },
+  enquiry: { label: 'Enquiry', icon: 'MessagesSquare', path: '/app/enquiry' },
+  enrollment: { label: 'Enrollment', icon: 'GraduationCap', path: '/app/enrollment' },
+  batch_management: { label: 'Batch Management', icon: 'CalendarRange', path: '/app/batches' },
+  batch_execution: { label: 'Batch Execution', icon: 'ListChecks', path: '/app/batch-execution' },
+  curriculum: { label: 'Curriculum', icon: 'BookOpen', path: '/app/curriculum' },
+  expense: { label: 'Finance', icon: 'Wallet', path: '/app/expenses' },
+  user_management: { label: 'User Management', icon: 'Users', path: '/app/users' },
+  my_account: { label: 'My Account', icon: 'UserCircle', path: '/app/account' },
 }

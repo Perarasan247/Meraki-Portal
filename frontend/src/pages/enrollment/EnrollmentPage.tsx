@@ -1,11 +1,13 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, CheckCircle2, AlertCircle } from 'lucide-react'
+import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, TrendingDown } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
+import { PageHeader } from '@/components/ui/page-header'
+import { Meter } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select } from '@/components/ui/input'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -18,6 +20,18 @@ import type { Enrollment, FeeStatus, Batch } from '@/lib/types'
 
 const FEE_STATUSES: FeeStatus[] = ['Paid', 'Partial', 'Pending']
 const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
+
+type MeterTone = 'accent' | 'warning' | 'danger'
+
+const FEE_TONE: Record<FeeStatus, MeterTone> = {
+  Paid: 'accent',
+  Partial: 'warning',
+  Pending: 'danger',
+}
+
+function feeTone(status: FeeStatus): MeterTone {
+  return FEE_TONE[status] ?? 'danger'
+}
 
 function useEnrollments() {
   const branchParam = useBranchQueryParam()
@@ -55,6 +69,8 @@ export default function EnrollmentPage() {
       partial: list.filter((e) => e.fee_status === 'Partial').length,
       paid: list.filter((e) => e.fee_status === 'Paid').length,
       revenue: list.reduce((sum, e) => sum + e.paid_amount, 0),
+      totalFee: list.reduce((sum, e) => sum + e.total_fee, 0),
+      outstanding: list.reduce((sum, e) => sum + e.pending_amount, 0),
     }
   }, [enrollments])
 
@@ -82,6 +98,7 @@ export default function EnrollmentPage() {
   const pendingOrPartial = (enrollments ?? []).filter((e) => e.fee_status !== 'Paid').slice(0, 5)
   const maxFeeCount = Math.max(1, ...byFeeStatus.map(([, c]) => c))
   const maxYearCount = Math.max(1, ...byYear.map(([, c]) => c))
+  const collectionPct = stats.totalFee > 0 ? Math.round((stats.revenue / stats.totalFee) * 100) : 0
 
   async function handleExport() {
     try {
@@ -93,39 +110,41 @@ export default function EnrollmentPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold">Enrollment Management</h1>
-          <p className="mt-1 text-sm text-(--color-muted-foreground)">Track enrolled students and fee collection.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-(--color-border) p-1">
-            {(['dashboard', 'list'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
-                  view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
-                )}
-              >
-                {v === 'dashboard' ? 'Dashboard' : 'List View'}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export Excel
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" /> New Enrollment
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Enrollments"
+        subtitle="Student records & fee collection"
+        icon={GraduationCap}
+        actions={
+          <>
+            <div className="flex rounded-lg border border-(--color-border) p-1">
+              {(['dashboard', 'list'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+                    view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
+                  )}
+                >
+                  {v === 'dashboard' ? 'Dashboard' : 'List View'}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export Excel
+            </Button>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" /> New Enrollment
+            </Button>
+          </>
+        }
+      />
+
+      <MoneySummary isLoading={isLoading} stats={stats} collectionPct={collectionPct} />
 
       {view === 'dashboard' ? (
         <EnrollmentDashboard
           isLoading={isLoading}
-          stats={stats}
           byProgram={byProgram}
           byFeeStatus={byFeeStatus}
           maxFeeCount={maxFeeCount}
@@ -144,11 +163,49 @@ export default function EnrollmentPage() {
   )
 }
 
-function EnrollmentDashboard({
-  isLoading, stats, byProgram, byFeeStatus, maxFeeCount, byYear, maxYearCount, pendingOrPartial, batchNameById, onViewAll,
+function MoneySummary({
+  isLoading, stats, collectionPct,
 }: {
   isLoading: boolean
-  stats: { total: number; pending: number; partial: number; paid: number; revenue: number }
+  stats: { total: number; revenue: number; totalFee: number; outstanding: number }
+  collectionPct: number
+}) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-4 lg:col-span-2">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+        ) : (
+          <>
+            <StatCard label="Total Fee Value" value={formatCurrency(stats.totalFee)} icon={Wallet} accent="primary" />
+            <StatCard label="Collected" value={formatCurrency(stats.revenue)} icon={CircleDollarSign} accent="accent" />
+            <StatCard label="Outstanding" value={formatCurrency(stats.outstanding)} icon={TrendingDown} accent="danger" />
+            <StatCard label="Enrollments" value={stats.total} icon={GraduationCap} accent="primary" />
+          </>
+        )}
+      </div>
+
+      <Card className="p-5">
+        <p className="text-sm font-medium text-(--color-muted-foreground)">Overall Collection</p>
+        <div className="mt-2 flex items-baseline justify-between">
+          <span className="font-display text-3xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{collectionPct}%</span>
+          <span className="text-xs text-(--color-muted-foreground) tabular-nums">
+            {formatCurrency(stats.revenue)} / {formatCurrency(stats.totalFee)}
+          </span>
+        </div>
+        <Meter value={stats.revenue} max={stats.totalFee} tone="accent" className="mt-3" />
+        <p className="mt-2 text-xs text-(--color-muted-foreground) tabular-nums">
+          <span className="font-medium text-rose-600 dark:text-rose-400">{formatCurrency(stats.outstanding)}</span> still outstanding
+        </p>
+      </Card>
+    </div>
+  )
+}
+
+function EnrollmentDashboard({
+  isLoading, byProgram, byFeeStatus, maxFeeCount, byYear, maxYearCount, pendingOrPartial, batchNameById, onViewAll,
+}: {
+  isLoading: boolean
   byProgram: [string, number][]
   byFeeStatus: [string, number][]
   maxFeeCount: number
@@ -160,20 +217,6 @@ function EnrollmentDashboard({
 }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-        {isLoading ? (
-          Array.from({ length: 5 }).map((_, i) => <StatCardSkeleton key={i} />)
-        ) : (
-          <>
-            <StatCard label="Total Enrolled" value={stats.total} icon={GraduationCap} accent="primary" />
-            <StatCard label="Fee Pending" value={stats.pending} icon={AlertCircle} accent="danger" />
-            <StatCard label="Partial Payment" value={stats.partial} icon={CircleDollarSign} accent="warning" />
-            <StatCard label="Fully Paid" value={stats.paid} icon={CheckCircle2} accent="accent" />
-            <StatCard label="Total Revenue" value={formatCurrency(stats.revenue)} icon={Wallet} accent="accent" />
-          </>
-        )}
-      </div>
-
       <Card>
         <CardHeader><CardTitle>Enrollments by Program</CardTitle></CardHeader>
         <CardContent>
@@ -184,7 +227,7 @@ function EnrollmentDashboard({
               {byProgram.map(([program, count]) => (
                 <div key={program} className="rounded-lg border border-(--color-border) p-3">
                   <p className="text-xs text-(--color-muted-foreground)">{program}</p>
-                  <p className="font-display text-lg font-bold">{count}</p>
+                  <p className="font-display text-lg font-bold tabular-nums">{count}</p>
                 </div>
               ))}
             </div>
@@ -203,12 +246,7 @@ function EnrollmentDashboard({
                 {byFeeStatus.map(([status, count]) => (
                   <div key={status} className="flex items-center gap-3">
                     <span className="w-20 shrink-0 text-sm text-(--color-muted-foreground)">{status}</span>
-                    <div className="h-2.5 flex-1 rounded-full bg-(--color-muted)">
-                      <div
-                        className="h-2.5 rounded-full bg-(--color-primary) transition-all"
-                        style={{ width: `${(count / maxFeeCount) * 100}%` }}
-                      />
-                    </div>
+                    <Meter value={count} max={maxFeeCount} tone={feeTone(status as FeeStatus)} className="flex-1" />
                     <span className="w-8 text-right text-sm font-medium tabular-nums">{count}</span>
                   </div>
                 ))}
@@ -227,12 +265,7 @@ function EnrollmentDashboard({
                 {byYear.map(([year, count]) => (
                   <div key={year} className="flex items-center gap-3">
                     <span className="w-20 shrink-0 text-sm text-(--color-muted-foreground)">{year}</span>
-                    <div className="h-2.5 flex-1 rounded-full bg-(--color-muted)">
-                      <div
-                        className="h-2.5 rounded-full bg-(--color-primary) transition-all"
-                        style={{ width: `${(count / maxYearCount) * 100}%` }}
-                      />
-                    </div>
+                    <Meter value={count} max={maxYearCount} tone="accent" className="flex-1" />
                     <span className="w-8 text-right text-sm font-medium tabular-nums">{count}</span>
                   </div>
                 ))}
@@ -258,12 +291,11 @@ function EnrollmentDashboard({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Student</TableHead>
                   <TableHead>Program</TableHead>
                   <TableHead>Batch</TableHead>
-                  <TableHead>Total Fee</TableHead>
-                  <TableHead>Paid</TableHead>
-                  <TableHead>Pending</TableHead>
+                  <TableHead className="min-w-56">Fee Collection</TableHead>
+                  <TableHead className="text-right">Pending</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -273,9 +305,10 @@ function EnrollmentDashboard({
                     <TableCell className="font-medium">{e.student_name}</TableCell>
                     <TableCell>{e.program}</TableCell>
                     <TableCell>{e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}</TableCell>
-                    <TableCell>{formatCurrency(e.total_fee)}</TableCell>
-                    <TableCell>{formatCurrency(e.paid_amount)}</TableCell>
-                    <TableCell>{formatCurrency(e.pending_amount)}</TableCell>
+                    <TableCell><FeeCell enrollment={e} /></TableCell>
+                    <TableCell className="text-right font-medium tabular-nums text-rose-600 dark:text-rose-400">
+                      {formatCurrency(e.pending_amount)}
+                    </TableCell>
                     <TableCell><StatusBadge status={e.fee_status} /></TableCell>
                   </TableRow>
                 ))}
@@ -284,6 +317,25 @@ function EnrollmentDashboard({
           )}
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** Paid / total with a fee meter — the money-centric record cell. */
+function FeeCell({ enrollment: e }: { enrollment: Enrollment }) {
+  return (
+    <div className="min-w-48">
+      <div className="flex items-baseline justify-between gap-2 text-sm tabular-nums">
+        <span className="font-medium text-(--color-foreground)">{formatCurrency(e.paid_amount)}</span>
+        <span className="text-xs text-(--color-muted-foreground)">of {formatCurrency(e.total_fee)}</span>
+      </div>
+      <Meter
+        value={e.paid_amount}
+        max={e.total_fee || e.paid_amount || 1}
+        tone={feeTone(e.fee_status)}
+        size="sm"
+        className="mt-1.5"
+      />
     </div>
   )
 }
@@ -320,7 +372,7 @@ function EnrollmentListView({
     <>
       <Card>
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-          <CardTitle>All Enrollments</CardTitle>
+          <CardTitle>Student Records</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
             <Input placeholder="Search name, mobile, program…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
             <Select value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="w-auto">
@@ -338,29 +390,33 @@ function EnrollmentListView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Mobile</TableHead>
+                  <TableHead>Student</TableHead>
                   <TableHead>Program</TableHead>
                   <TableHead>Batch</TableHead>
-                  <TableHead>Total Fee</TableHead>
-                  <TableHead>Paid</TableHead>
-                  <TableHead>Pending</TableHead>
+                  <TableHead className="min-w-56">Fee Collection</TableHead>
+                  <TableHead className="text-right">Pending</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((e) => (
                   <TableRow key={e.id}>
-                    <TableCell className="font-medium">{e.student_name}</TableCell>
-                    <TableCell>{e.mobile}</TableCell>
-                    <TableCell>{e.program}</TableCell>
-                    <TableCell>{e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}</TableCell>
-                    <TableCell>{formatCurrency(e.total_fee)}</TableCell>
-                    <TableCell>{formatCurrency(e.paid_amount)}</TableCell>
-                    <TableCell>{formatCurrency(e.pending_amount)}</TableCell>
-                    <TableCell><StatusBadge status={e.fee_status} /></TableCell>
                     <TableCell>
+                      <p className="font-medium">{e.student_name}</p>
+                      <p className="text-xs text-(--color-muted-foreground) tabular-nums">{e.mobile}</p>
+                    </TableCell>
+                    <TableCell>
+                      <p>{e.program}</p>
+                      {e.year_of_study && <p className="text-xs text-(--color-muted-foreground)">{e.year_of_study}</p>}
+                    </TableCell>
+                    <TableCell>{e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}</TableCell>
+                    <TableCell><FeeCell enrollment={e} /></TableCell>
+                    <TableCell className="text-right font-medium tabular-nums text-rose-600 dark:text-rose-400">
+                      {e.pending_amount > 0 ? formatCurrency(e.pending_amount) : '—'}
+                    </TableCell>
+                    <TableCell><StatusBadge status={e.fee_status} /></TableCell>
+                    <TableCell className="text-right">
                       {e.fee_status !== 'Paid' && (
                         <Button size="sm" variant="outline" onClick={() => setPaymentTarget(e)}>
                           Record Payment
@@ -411,6 +467,19 @@ function RecordPaymentDialog({
           if (value > 0) onSubmit(value)
         }}
       >
+        <div className="rounded-lg border border-(--color-border) bg-(--color-muted) p-3">
+          <div className="flex items-baseline justify-between text-sm tabular-nums">
+            <span className="text-(--color-muted-foreground)">Paid so far</span>
+            <span className="font-medium">{formatCurrency(enrollment.paid_amount)} / {formatCurrency(enrollment.total_fee)}</span>
+          </div>
+          <Meter
+            value={enrollment.paid_amount}
+            max={enrollment.total_fee || enrollment.paid_amount || 1}
+            tone={feeTone(enrollment.fee_status)}
+            size="sm"
+            className="mt-2"
+          />
+        </div>
         <div>
           <Label htmlFor="amount">Amount *</Label>
           <Input id="amount" required type="number" min={0.01} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />

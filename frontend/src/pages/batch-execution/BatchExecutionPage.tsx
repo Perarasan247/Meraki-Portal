@@ -1,13 +1,17 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ListChecks } from 'lucide-react'
+import { ListChecks, CheckCircle2, CircleDashed, Loader2 } from 'lucide-react'
 import { api, ApiError } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { PageHeader } from '@/components/ui/page-header'
+import { Card, CardContent } from '@/components/ui/card'
 import { Label, Select, Textarea } from '@/components/ui/input'
+import { Ring, Meter } from '@/components/ui/progress'
+import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import type { Batch, Curriculum } from '@/lib/types'
 
 type PhaseStatus = 'Not Started' | 'In Progress' | 'Completed'
@@ -28,6 +32,32 @@ interface BatchExecution {
   phase_progress: PhaseProgressEntry[]
   progress_pct: number
   updated_at: string
+}
+
+type Tone = 'primary' | 'accent' | 'warning' | 'danger'
+
+const STATUS_TONE: Record<PhaseStatus, Tone> = {
+  'Not Started': 'primary',
+  'In Progress': 'warning',
+  Completed: 'accent',
+}
+
+const STATUS_BADGE: Record<PhaseStatus, 'default' | 'warning' | 'success'> = {
+  'Not Started': 'default',
+  'In Progress': 'warning',
+  Completed: 'success',
+}
+
+const STATUS_ICON: Record<PhaseStatus, typeof CheckCircle2> = {
+  'Not Started': CircleDashed,
+  'In Progress': Loader2,
+  Completed: CheckCircle2,
+}
+
+const NODE_TONE: Record<PhaseStatus, string> = {
+  'Not Started': 'border-(--color-border) bg-(--color-muted) text-(--color-muted-foreground)',
+  'In Progress': 'border-amber-400 bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+  Completed: 'border-emerald-400 bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
 }
 
 function useBatches() {
@@ -123,12 +153,21 @@ export default function BatchExecutionPage() {
 
   const isLoading = batchesLoading || curriculaLoading
 
+  const sortedPhases = React.useMemo(
+    () => (selectedCurriculum?.phases ?? []).slice().sort((a, b) => a.order - b.order),
+    [selectedCurriculum],
+  )
+  const totalPhases = sortedPhases.length
+  const completedPhases = sortedPhases.filter((p) => progressFor(p.id).status === 'Completed').length
+  const inProgressPhases = sortedPhases.filter((p) => progressFor(p.id).status === 'In Progress').length
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-bold">Batch Execution Tracker</h1>
-        <p className="mt-1 text-sm text-(--color-muted-foreground)">Track curriculum progress for a running batch.</p>
-      </div>
+      <PageHeader
+        title="Batch Execution"
+        subtitle="Attendance & progress tracking"
+        icon={ListChecks}
+      />
 
       <Card>
         <CardContent className="grid gap-4 p-5 sm:grid-cols-2">
@@ -163,60 +202,111 @@ export default function BatchExecutionPage() {
       ) : !execution || !selectedCurriculum ? (
         <EmptyState icon={ListChecks} title="Could not load progress tracker" description="Try selecting the batch again." />
       ) : (
-        <Card>
-          <CardHeader className="space-y-3">
-            <div className="flex items-center justify-between">
-              <CardTitle>{selectedBatch?.batch_name} — {selectedCurriculum.title}</CardTitle>
-              <span className="font-display text-lg font-bold tabular-nums">{execution.progress_pct}%</span>
-            </div>
-            <div className="h-2.5 w-full rounded-full bg-(--color-muted)">
-              <div
-                className="h-2.5 rounded-full bg-(--color-accent) transition-all"
-                style={{ width: `${execution.progress_pct}%` }}
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {selectedCurriculum.phases.length === 0 ? (
-              <p className="text-sm text-(--color-muted-foreground)">This curriculum has no phases defined.</p>
-            ) : (
-              selectedCurriculum.phases
-                .slice()
-                .sort((a, b) => a.order - b.order)
-                .map((phase) => {
-                  const progress = progressFor(phase.id)
-                  return (
-                    <div key={phase.id} className="rounded-lg border border-(--color-border) p-4">
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium">{phase.title}</p>
-                          {phase.description && <p className="mt-0.5 text-sm text-(--color-muted-foreground)">{phase.description}</p>}
-                          {phase.estimated_duration && (
-                            <p className="mt-0.5 text-xs text-(--color-muted-foreground)">Est. {phase.estimated_duration}</p>
-                          )}
+        <>
+          {/* Tracker hero — foreground the progress with a ring + meters */}
+          <Card>
+            <CardContent className="flex flex-col gap-6 p-5 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-4">
+                <Ring value={execution.progress_pct} tone="accent" size={92} stroke={8} />
+                <div className="min-w-0">
+                  <p className="truncate font-display text-lg font-bold text-(--color-foreground)">
+                    {selectedBatch?.batch_name}
+                  </p>
+                  <p className="truncate text-sm text-(--color-muted-foreground)">{selectedCurriculum.title}</p>
+                  <Badge variant="primary" className="mt-2">{selectedCurriculum.program}</Badge>
+                </div>
+              </div>
+
+              <div className="grid flex-1 gap-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-medium text-(--color-muted-foreground)">Phases completed</p>
+                  <p className="mt-1 font-display text-xl font-bold tabular-nums">
+                    {completedPhases}<span className="text-(--color-muted-foreground)">/{totalPhases}</span>
+                  </p>
+                  <Meter value={completedPhases} max={totalPhases || 1} tone="accent" className="mt-2" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-(--color-muted-foreground)">In progress</p>
+                  <p className="mt-1 font-display text-xl font-bold tabular-nums">
+                    {inProgressPhases}<span className="text-(--color-muted-foreground)">/{totalPhases}</span>
+                  </p>
+                  <Meter value={inProgressPhases} max={totalPhases || 1} tone="warning" className="mt-2" />
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-(--color-muted-foreground)">Completion rate</p>
+                  <p className="mt-1 font-display text-xl font-bold tabular-nums">{execution.progress_pct}%</p>
+                  <Meter value={execution.progress_pct} tone="primary" className="mt-2" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Phase timeline — progress-annotated list */}
+          {totalPhases === 0 ? (
+            <EmptyState icon={ListChecks} title="This curriculum has no phases defined." />
+          ) : (
+            <ol className="relative space-y-4 before:absolute before:left-4 before:top-2 before:bottom-2 before:w-px before:bg-(--color-border)">
+              {sortedPhases.map((phase) => {
+                const progress = progressFor(phase.id)
+                const Icon = STATUS_ICON[progress.status]
+                return (
+                  <li key={phase.id} className="relative pl-12">
+                    <span
+                      className={cn(
+                        'absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border-2',
+                        NODE_TONE[progress.status],
+                      )}
+                      aria-hidden
+                    >
+                      <Icon className={cn('h-4 w-4', progress.status === 'In Progress' && 'animate-spin')} />
+                    </span>
+                    <Card>
+                      <CardContent className="p-4">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{phase.title}</p>
+                              <Badge variant={STATUS_BADGE[progress.status]}>{progress.status}</Badge>
+                            </div>
+                            {phase.description && (
+                              <p className="mt-0.5 text-sm text-(--color-muted-foreground)">{phase.description}</p>
+                            )}
+                            {phase.estimated_duration && (
+                              <p className="mt-0.5 text-xs text-(--color-muted-foreground)">Est. {phase.estimated_duration}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Ring
+                              value={progress.status === 'Completed' ? 100 : progress.status === 'In Progress' ? 50 : 0}
+                              tone={STATUS_TONE[progress.status]}
+                              size={40}
+                              stroke={4}
+                            />
+                            <Select
+                              value={progress.status}
+                              onChange={(e) => updatePhase(phase.id, { status: e.target.value as PhaseStatus })}
+                              className="h-9 w-40 cursor-pointer"
+                            >
+                              {PHASE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                            </Select>
+                          </div>
                         </div>
-                        <Select
-                          value={progress.status}
-                          onChange={(e) => updatePhase(phase.id, { status: e.target.value as PhaseStatus })}
-                          className="h-9 w-40"
-                        >
-                          {PHASE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </Select>
-                      </div>
-                      <Textarea
-                        placeholder="Notes…"
-                        defaultValue={progress.notes ?? ''}
-                        onBlur={(e) => {
-                          if (e.target.value !== (progress.notes ?? '')) updatePhase(phase.id, { notes: e.target.value || null })
-                        }}
-                        className="mt-3 min-h-16"
-                      />
-                    </div>
-                  )
-                })
-            )}
-          </CardContent>
-        </Card>
+                        <Textarea
+                          placeholder="Notes…"
+                          defaultValue={progress.notes ?? ''}
+                          onBlur={(e) => {
+                            if (e.target.value !== (progress.notes ?? '')) updatePhase(phase.id, { notes: e.target.value || null })
+                          }}
+                          className="mt-3 min-h-16"
+                        />
+                      </CardContent>
+                    </Card>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+        </>
       )}
     </div>
   )

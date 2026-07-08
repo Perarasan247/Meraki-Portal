@@ -13,6 +13,10 @@ class Settings(BaseSettings):
 
     frontend_origin: str = "http://localhost:5173"
 
+    # Branch that public website enquiries are attached to. If empty, the first
+    # branch in the database is used as fallback.
+    public_enquiry_branch_id: str = ""
+
     anthropic_api_key: str = ""
 
 

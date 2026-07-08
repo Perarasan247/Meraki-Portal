@@ -29,7 +29,13 @@
       "Bash(curl -s http://localhost:5173/)",
       "Bash(curl -s http://localhost:5173/ -o /dev/null -w \"%{http_code}\\\\n\")",
       "Bash(curl -s http://localhost:5173/src/main.tsx -o /dev/null -w \"main.tsx: %{http_code}\\\\n\")",
-      "Bash(pkill -f \"node .*vite\")"
+      "Bash(pkill -f \"node .*vite\")",
+      "Bash(grep -oE '<h[1-3][^>]*>[^<]{3,50}</h[1-3]>' \"meraki-alai-firebase \\(7\\).html\")",
+      "Bash(python3 scripts/search.py \"AI training internship education SaaS marketing landing page professional trustworthy\" --design-system -p \"Meraki AI Labs\" -f markdown)",
+      "Bash(echo \"===TSC EXIT $?===\")",
+      "Bash(\"/home/alai-labs/playground/Arasu/Meraki Portal/backend/.venv/bin/python\" -c \"import uvicorn; print\\('uvicorn ok'\\)\")",
+      "Bash(echo \"exit:$?\")",
+      "Bash(grep -i \"\\\\.env$\\\\|\\\\.env\\\\.\")"
     ],
     "additionalDirectories": [
       "/tmp"

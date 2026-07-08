@@ -16,6 +16,8 @@ from app.api.routes import (
     users,
     account,
     branches,
+    public,
+    lms,
 )
 
 settings = get_settings()
@@ -44,3 +46,5 @@ app.include_router(reports.router, prefix=api_prefix)
 app.include_router(users.router, prefix=api_prefix)
 app.include_router(account.router, prefix=api_prefix)
 app.include_router(branches.router, prefix=api_prefix)
+app.include_router(public.router, prefix=api_prefix)
+app.include_router(lms.router, prefix=api_prefix)

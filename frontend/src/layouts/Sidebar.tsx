@@ -14,7 +14,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const NAV_ORDER: ModuleKey[] = [
   'dashboard', 'enquiry', 'enrollment', 'batch_management', 'batch_execution',
-  'curriculum', 'expense', 'marketing', 'reports', 'user_management', 'my_account',
+  'curriculum', 'expense', 'user_management', 'my_account',
 ]
 
 interface SidebarProps {
@@ -64,7 +64,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
               <NavLink
                 key={key}
                 to={meta.path}
-                end={meta.path === '/'}
+                end={meta.path === '/app'}
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(

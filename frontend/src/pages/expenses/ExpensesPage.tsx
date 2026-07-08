@@ -1,15 +1,17 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, Wallet, CalendarDays, FileText, CheckCircle2 } from 'lucide-react'
+import { Download, Plus, Wallet, Receipt, CheckCircle2, Clock } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
+import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
+import { Meter } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select, Textarea } from '@/components/ui/input'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
-import { StatusBadge } from '@/components/ui/badge'
+import { Badge, StatusBadge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
@@ -33,23 +35,18 @@ export default function ExpensesPage() {
 
   const stats = React.useMemo(() => {
     const list = expenses ?? []
-    const now = new Date()
-    const thisMonth = list.filter((e) => {
-      const d = new Date(e.date)
-      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
-    })
     return {
       total: list.reduce((sum, e) => sum + e.amount, 0),
-      thisMonth: thisMonth.reduce((sum, e) => sum + e.amount, 0),
+      approvedTotal: list.filter((e) => e.status === 'Approved').reduce((sum, e) => sum + e.amount, 0),
+      pendingTotal: list.filter((e) => e.status === 'Pending').reduce((sum, e) => sum + e.amount, 0),
       records: list.length,
-      approved: list.filter((e) => e.status === 'Approved').length,
     }
   }, [expenses])
 
   const byCategory = React.useMemo(() => {
     const map = new Map<string, number>()
     for (const e of expenses ?? []) map.set(e.category, (map.get(e.category) ?? 0) + e.amount)
-    return Array.from(map.entries())
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1])
   }, [expenses])
 
   const recent = (expenses ?? []).slice(0, 5)
@@ -64,34 +61,37 @@ export default function ExpensesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-bold">Expense Management</h1>
-          <p className="mt-1 text-sm text-(--color-muted-foreground)">Track and approve branch spending.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-(--color-border) p-1">
-            {(['dashboard', 'list'] as const).map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v)}
-                className={cn(
-                  'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
-                  view === v ? 'bg-(--color-primary) text-(--color-primary-foreground)' : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
-                )}
-              >
-                {v === 'dashboard' ? 'Dashboard' : 'List View'}
-              </button>
-            ))}
-          </div>
-          <Button variant="outline" onClick={handleExport}>
-            <Download className="h-4 w-4" /> Export Excel
-          </Button>
-          <Button onClick={() => setFormOpen(true)}>
-            <Plus className="h-4 w-4" /> New Expense
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Finance"
+        subtitle="Expense ledger & approvals"
+        icon={Wallet}
+        actions={
+          <>
+            <div className="flex rounded-lg border border-(--color-border) p-1">
+              {(['dashboard', 'list'] as const).map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  className={cn(
+                    'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+                    view === v
+                      ? 'bg-(--color-primary) text-(--color-primary-foreground)'
+                      : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
+                  )}
+                >
+                  {v === 'dashboard' ? 'Overview' : 'Ledger'}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export Excel
+            </Button>
+            <Button onClick={() => setFormOpen(true)}>
+              <Plus className="h-4 w-4" /> New Expense
+            </Button>
+          </>
+        }
+      />
 
       {view === 'dashboard' ? (
         <ExpensesDashboard
@@ -110,88 +110,132 @@ export default function ExpensesPage() {
   )
 }
 
-function ExpensesDashboard({
-  isLoading, stats, byCategory, recent, onViewAll,
+function MoneySummary({
+  isLoading,
+  stats,
 }: {
   isLoading: boolean
-  stats: { total: number; thisMonth: number; records: number; approved: number }
+  stats: { total: number; approvedTotal: number; pendingTotal: number; records: number }
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      {isLoading ? (
+        Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+      ) : (
+        <>
+          <StatCard label="Total Spend" value={formatCurrency(stats.total)} icon={Wallet} accent="primary" />
+          <StatCard label="Approved" value={formatCurrency(stats.approvedTotal)} icon={CheckCircle2} accent="accent" />
+          <StatCard label="Pending" value={formatCurrency(stats.pendingTotal)} icon={Clock} accent="warning" />
+          <StatCard label="Records" value={stats.records} icon={Receipt} accent="accent" />
+        </>
+      )}
+    </div>
+  )
+}
+
+function CategoryBreakdown({ byCategory, total }: { byCategory: [string, number][]; total: number }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Category Breakdown</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {byCategory.length === 0 ? (
+          <p className="text-sm text-(--color-muted-foreground)">No data yet</p>
+        ) : (
+          <div className="space-y-3.5">
+            {byCategory.map(([category, amount]) => {
+              const share = total > 0 ? (amount / total) * 100 : 0
+              return (
+                <div key={category} className="space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="flex items-center gap-2 text-sm font-medium text-(--color-foreground)">
+                      {category}
+                      <span className="text-xs tabular-nums text-(--color-muted-foreground)">
+                        {share.toFixed(0)}%
+                      </span>
+                    </span>
+                    <span className="font-display text-sm font-semibold tabular-nums text-(--color-foreground)">
+                      {formatCurrency(amount)}
+                    </span>
+                  </div>
+                  <Meter value={amount} max={total} tone="primary" size="sm" />
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+function ExpensesDashboard({
+  isLoading,
+  stats,
+  byCategory,
+  recent,
+  onViewAll,
+}: {
+  isLoading: boolean
+  stats: { total: number; approvedTotal: number; pendingTotal: number; records: number }
   byCategory: [string, number][]
   recent: Expense[]
   onViewAll: () => void
 }) {
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {isLoading ? (
-          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
-        ) : (
-          <>
-            <StatCard label="Total Expenses" value={formatCurrency(stats.total)} icon={Wallet} accent="primary" />
-            <StatCard label="This Month" value={formatCurrency(stats.thisMonth)} icon={CalendarDays} accent="warning" />
-            <StatCard label="Total Records" value={stats.records} icon={FileText} accent="accent" />
-            <StatCard label="Approved" value={stats.approved} icon={CheckCircle2} accent="accent" />
-          </>
-        )}
-      </div>
+      <MoneySummary isLoading={isLoading} stats={stats} />
 
-      <Card>
-        <CardHeader><CardTitle>By Category</CardTitle></CardHeader>
-        <CardContent>
-          {byCategory.length === 0 ? (
-            <p className="text-sm text-(--color-muted-foreground)">No data yet</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {byCategory.map(([category, amount]) => (
-                <div key={category} className="rounded-lg border border-(--color-border) p-3">
-                  <p className="text-xs text-(--color-muted-foreground)">{category}</p>
-                  <p className="font-display text-lg font-bold">{formatCurrency(amount)}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,20rem)_1fr]">
+        <CategoryBreakdown byCategory={byCategory} total={stats.total} />
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <CardTitle>Recent Expenses</CardTitle>
-          <button onClick={onViewAll} className="cursor-pointer text-sm font-medium text-(--color-primary) hover:underline">
-            View All
-          </button>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <TableSkeleton />
-          ) : recent.length === 0 ? (
-            <EmptyState icon={Wallet} title="No expenses yet." description="Expenses you record will show up here." />
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead>Amount</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Vendor</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {recent.map((e) => (
-                  <TableRow key={e.id}>
-                    <TableCell className="font-medium">{e.title}</TableCell>
-                    <TableCell>{e.category}</TableCell>
-                    <TableCell>{formatCurrency(e.amount)}</TableCell>
-                    <TableCell>{formatDate(e.date)}</TableCell>
-                    <TableCell>{e.vendor ?? '—'}</TableCell>
-                    <TableCell><StatusBadge status={e.status} /></TableCell>
+        <Card>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
+            <CardTitle>Recent Ledger</CardTitle>
+            <button
+              onClick={onViewAll}
+              className="cursor-pointer text-sm font-medium text-(--color-primary) hover:underline"
+            >
+              View All
+            </button>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <TableSkeleton />
+            ) : recent.length === 0 ? (
+              <EmptyState icon={Wallet} title="No expenses yet." description="Expenses you record will show up here." />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Category</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {recent.map((e) => (
+                    <TableRow key={e.id}>
+                      <TableCell className="tabular-nums text-(--color-muted-foreground)">{formatDate(e.date)}</TableCell>
+                      <TableCell className="font-medium">{e.title}</TableCell>
+                      <TableCell>
+                        <Badge>{e.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">{formatCurrency(e.amount)}</TableCell>
+                      <TableCell>
+                        <StatusBadge status={e.status} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
@@ -233,19 +277,34 @@ function ExpensesListView({ expenses, isLoading }: { expenses: Expense[]; isLoad
     return true
   })
 
+  const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0)
+
   return (
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-        <CardTitle>All Expenses</CardTitle>
+        <CardTitle>Ledger</CardTitle>
         <div className="flex flex-wrap items-center gap-2">
-          <Input placeholder="Search title, vendor, category…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+          <Input
+            placeholder="Search title, vendor, category…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-56"
+          />
           <Select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="w-auto">
             <option value="">All categories</option>
-            {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
           </Select>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
             <option value="">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
           </Select>
         </div>
       </CardHeader>
@@ -258,26 +317,30 @@ function ExpensesListView({ expenses, isLoading }: { expenses: Expense[]; isLoad
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead>Date</TableHead>
                 <TableHead>Title</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Amount</TableHead>
                 <TableHead>Vendor</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.map((e) => (
                 <TableRow key={e.id}>
+                  <TableCell className="tabular-nums text-(--color-muted-foreground)">{formatDate(e.date)}</TableCell>
                   <TableCell className="font-medium">{e.title}</TableCell>
-                  <TableCell>{e.category}</TableCell>
-                  <TableCell>{formatCurrency(e.amount)}</TableCell>
-                  <TableCell>{e.vendor ?? '—'}</TableCell>
-                  <TableCell>{formatDate(e.date)}</TableCell>
-                  <TableCell><StatusBadge status={e.status} /></TableCell>
                   <TableCell>
-                    <div className="flex items-center gap-2">
+                    <Badge>{e.category}</Badge>
+                  </TableCell>
+                  <TableCell className="text-(--color-muted-foreground)">{e.vendor ?? '—'}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{formatCurrency(e.amount)}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={e.status} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-2">
                       {e.status === 'Pending' && (
                         <Button
                           size="sm"
@@ -301,6 +364,17 @@ function ExpensesListView({ expenses, isLoading }: { expenses: Expense[]; isLoad
                 </TableRow>
               ))}
             </TableBody>
+            <tfoot className="border-t border-(--color-border) bg-(--color-muted)/40">
+              <tr>
+                <td colSpan={4} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-(--color-muted-foreground)">
+                  {filtered.length} record{filtered.length === 1 ? '' : 's'}
+                </td>
+                <td className="px-4 py-3 text-right font-display text-sm font-bold tabular-nums text-(--color-foreground)">
+                  {formatCurrency(filteredTotal)}
+                </td>
+                <td colSpan={2} />
+              </tr>
+            </tfoot>
           </Table>
         )}
       </CardContent>
