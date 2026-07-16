@@ -28,9 +28,18 @@ settings = get_settings()
 
 app = FastAPI(title="Meraki Portal API", version="1.0.0")
 
+# FRONTEND_ORIGIN may be a comma-separated list; trailing slashes are stripped so
+# a stray "https://site.com/" still matches the browser's "https://site.com" origin.
+_allowed_origins = [
+    o.strip().rstrip("/") for o in settings.frontend_origin.split(",") if o.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=_allowed_origins,
+    # Always allow this project's Vercel deployments (production + preview URLs),
+    # so testing works regardless of the exact FRONTEND_ORIGIN value.
+    allow_origin_regex=r"https://meraki-portal[\w-]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
