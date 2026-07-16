@@ -21,7 +21,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Select } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/lib/utils'
-import { MODULE_META, type ModuleKey } from '@/lib/types'
+import { MODULE_META, type ModuleKey, type Domain } from '@/lib/types'
 
 interface DashboardSummary {
   module_counts: Record<string, number | null>
@@ -87,12 +87,25 @@ export default function DashboardPage() {
     queryFn: () => api.get<DashboardSummary>(`/dashboard/summary?${filterParams.toString()}`),
   })
 
+  // All internship domains — so the program filter lists every program, not just
+  // ones that already have enquiries.
+  const { data: domains } = useQuery({
+    queryKey: ['domains', 'all'],
+    queryFn: () => api.get<Domain[]>('/domains'),
+  })
+
   const isSuperAdmin = profile?.role === 'super_admin'
   const visibleCards = MODULE_CARDS.filter(
     (c) => isSuperAdmin || c.key === 'my_account' || profile?.modules.includes(c.key),
   )
 
-  const programOptions = Object.keys(data?.programs ?? {})
+  // Dropdown lists every domain label (deduped across branches) plus any program
+  // already present in the data, sorted alphabetically.
+  const programOptions = React.useMemo(() => {
+    const labels = new Set<string>((domains ?? []).map((d) => d.label))
+    Object.keys(data?.programs ?? {}).forEach((p) => labels.add(p))
+    return [...labels].sort((a, b) => a.localeCompare(b))
+  }, [domains, data])
   const hasFilters = year || month || program
 
   const programData = Object.entries(data?.programs ?? {})
@@ -146,7 +159,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <PageHeader
         title="Dashboard"
-        subtitle={firstName ? `Welcome back, ${firstName} — business overview at a glance` : 'Business overview at a glance'}
+        subtitle={firstName ? `Welcome back, ${firstName}` : undefined}
         icon={LayoutDashboard}
         actions={filterControls}
       />
@@ -160,42 +173,42 @@ export default function DashboardPage() {
             <>
               <StatCard
                 label="Total Enquiries"
-                value={data?.summary.total_enquiries ?? 0}
-                hint={`${data?.summary.converted_count ?? 0} converted`}
+                value={data?.summary?.total_enquiries ?? 0}
+                hint={`${data?.summary?.converted_count ?? 0} converted`}
                 icon={MessagesSquare}
                 accent="primary"
               />
               <StatCard
                 label="Converted Enquiries"
-                value={data?.summary.converted_count ?? 0}
+                value={data?.summary?.converted_count ?? 0}
                 hint="from total enquiries"
                 icon={TrendingUp}
                 accent="accent"
               />
               <StatCard
                 label="Students Enrolled"
-                value={data?.summary.students_enrolled ?? 0}
+                value={data?.summary?.students_enrolled ?? 0}
                 hint="active learners"
                 icon={GraduationCap}
                 accent="accent"
               />
               <StatCard
                 label="Revenue"
-                value={formatCurrency(data?.summary.revenue ?? 0)}
+                value={formatCurrency(data?.summary?.revenue ?? 0)}
                 hint="collected to date"
                 icon={Wallet}
                 accent="primary"
               />
               <StatCard
                 label="Total Expenses"
-                value={formatCurrency(data?.summary.total_expenses ?? 0)}
-                hint={`${data?.summary.expense_records ?? 0} records`}
+                value={formatCurrency(data?.summary?.total_expenses ?? 0)}
+                hint={`${data?.summary?.expense_records ?? 0} records`}
                 icon={Wallet}
                 accent="danger"
               />
               <StatCard
                 label="Expense Records"
-                value={data?.summary.expense_records ?? 0}
+                value={data?.summary?.expense_records ?? 0}
                 hint="logged transactions"
                 icon={ListChecks}
                 accent="warning"
@@ -305,9 +318,9 @@ export default function DashboardPage() {
             ? Array.from({ length: 7 }).map((_, i) => <StatCardSkeleton key={i} />)
             : visibleCards.map(({ key, icon: Icon, accent }) => {
                 const meta = MODULE_META[key]
-                const count = data?.module_counts[key]
+                const count = data?.module_counts?.[key]
                 const ACCENT: Record<string, string> = {
-                  primary: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
+                  primary: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
                   accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
                   warning: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300',
                   danger: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',

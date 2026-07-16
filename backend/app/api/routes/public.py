@@ -37,23 +37,18 @@ def submit_public_enquiry(payload: PublicEnquiryCreate):
     client = get_service_client()
     branch_id = _resolve_public_branch(client)
 
-    note_parts = []
-    if payload.email:
-        note_parts.append(f"Email: {payload.email}")
-    if payload.message:
-        note_parts.append(payload.message)
-
     row = (
         client.table("enquiries")
         .insert(
             {
                 "branch_id": branch_id,
                 "student_name": payload.name,
+                "email": payload.email,
                 "mobile": payload.mobile,
                 "program": payload.program,
                 "reference_source": "Website",
                 "status": "New",
-                "notes": "\n".join(note_parts) or None,
+                "notes": payload.message or None,
             }
         )
         .execute()

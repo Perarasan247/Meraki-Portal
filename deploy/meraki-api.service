@@ -1,0 +1,25 @@
+# Meraki Portal — systemd unit for the FastAPI backend.
+#
+# Install:
+#   sudo cp deploy/meraki-api.service /etc/systemd/system/meraki-api.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now meraki-api
+#   sudo systemctl status meraki-api      # should read: active (running)
+#
+# Logs:  sudo journalctl -u meraki-api -f
+
+[Unit]
+Description=Meraki Portal API (FastAPI/uvicorn)
+After=network.target
+
+[Service]
+User=meraki
+Group=www-data
+WorkingDirectory=/var/www/meraki/backend
+# Reads /var/www/meraki/backend/.env via pydantic-settings.
+ExecStart=/var/www/meraki/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

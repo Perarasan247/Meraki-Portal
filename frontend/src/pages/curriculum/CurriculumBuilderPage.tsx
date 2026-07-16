@@ -4,10 +4,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
   Wrench, Plus, Trash2, ChevronUp, ChevronDown, ChevronRight, Pencil, Eye, EyeOff,
-  FileText, Video, Image as ImageIcon, HelpCircle, Clock, ListChecks, Save, ArrowLeft,
-  CircleCheck, X,
+  FileText, Video, Image as ImageIcon, HelpCircle, Clock, Save, ArrowLeft,
+  CircleCheck, X, Layers, Upload,
 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { api, ApiError } from '@/lib/api'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -16,9 +16,10 @@ import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
+import { useConfirm } from '@/components/ui/confirm'
 import { cn } from '@/lib/utils'
 import type {
-  CurriculumContent, ModuleTree, LessonTree, LessonBlock, Quiz, QuizQuestion, QuizOption,
+  Curriculum, CurriculumContent, ModuleTree, LessonTree, LessonBlock, Quiz, QuizQuestion, QuizOption,
   LessonBlockType, QuizQuestionType,
 } from '@/lib/types'
 
@@ -49,7 +50,12 @@ function useAction<V = void>(
       invalidate()
       if (opts?.success) toast.success(opts.success)
     },
-    onError: () => toast.error(opts?.error ?? 'Something went wrong'),
+    // Show what the API actually said (e.g. validation detail) rather than a
+    // generic message that hides the cause.
+    onError: (err) =>
+      toast.error(opts?.error ?? 'Something went wrong', {
+        description: err instanceof ApiError ? err.message : undefined,
+      }),
   })
 }
 
@@ -75,6 +81,17 @@ function parseYouTubeId(url: string): string {
     if (m) return m[1]
   }
   return ''
+}
+
+/** Read an uploaded image file into a base64 data URL so it can be stored and
+ * rendered inline without a separate storage bucket. */
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 const QUESTION_TYPE_LABEL: Record<QuizQuestionType, string> = {
@@ -169,26 +186,39 @@ export default function CurriculumBuilderPage() {
     enabled: !!cid,
   })
 
-  const [selectedModuleId, setSelectedModuleId] = React.useState<string | null>(null)
   const [addModuleOpen, setAddModuleOpen] = React.useState(false)
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set())
+  const initialised = React.useRef(false)
+
+  // Fetch the internship title for the header (cached from the catalog).
+  const { data: curricula } = useQuery({
+    queryKey: ['curricula'],
+    queryFn: () => api.get<Curriculum[]>('/curricula'),
+  })
+  const course = curricula?.find((c) => c.id === cid) ?? null
 
   const modules = React.useMemo(
     () => [...(data?.modules ?? [])].sort((a, b) => a.order_index - b.order_index),
     [data],
   )
 
-  // keep a valid selection
+  // Open the first section by default so the author lands on a clean outline
+  // with immediate context, and expands the rest as needed.
   React.useEffect(() => {
-    if (modules.length === 0) {
-      setSelectedModuleId(null)
-      return
+    if (!initialised.current && modules.length) {
+      setExpanded(new Set([modules[0].id]))
+      initialised.current = true
     }
-    if (!selectedModuleId || !modules.some((m) => m.id === selectedModuleId)) {
-      setSelectedModuleId(modules[0].id)
-    }
-  }, [modules, selectedModuleId])
+  }, [modules])
 
-  const selectedModule = modules.find((m) => m.id === selectedModuleId) ?? null
+  function toggleSection(id: string) {
+    setExpanded((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+  }
 
   return (
     <BuilderCtx.Provider value={ctxValue}>
@@ -201,12 +231,12 @@ export default function CurriculumBuilderPage() {
         </Link>
 
         <PageHeader
-          title="Course Builder"
-          subtitle="Modules, lessons, content & quizzes"
+          title={course?.title || 'Course Builder'}
+          subtitle="Build your internship — add sections, lessons, content & quizzes"
           icon={Wrench}
           actions={
             <Button onClick={() => setAddModuleOpen(true)}>
-              <Plus className="h-4 w-4" /> Add Module
+              <Plus className="h-4 w-4" /> Add Section
             </Button>
           }
         />
@@ -217,31 +247,21 @@ export default function CurriculumBuilderPage() {
           <Card>
             <CardContent className="py-4">
               <EmptyState
-                icon={ListChecks}
-                title="No modules yet"
-                description="Start building this course by adding your first module."
-                actionLabel="Add Module"
+                icon={Layers}
+                title="Let’s build this internship"
+                description="Sections group related lessons (like weeks or topics). Add your first section to begin."
+                actionLabel="Add Section"
                 onAction={() => setAddModuleOpen(true)}
               />
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-            <ModuleList
-              modules={modules}
-              selectedId={selectedModuleId}
-              onSelect={setSelectedModuleId}
-            />
-            {selectedModule ? (
-              <ModulePanel key={selectedModule.id} module={selectedModule} />
-            ) : (
-              <Card>
-                <CardContent className="py-4">
-                  <EmptyState title="Select a module" description="Pick a module from the list to edit it." />
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          <SectionList
+            modules={modules}
+            expanded={expanded}
+            onToggle={toggleSection}
+            onAddSection={() => setAddModuleOpen(true)}
+          />
         )}
       </div>
 
@@ -252,17 +272,10 @@ export default function CurriculumBuilderPage() {
 
 function BuilderSkeleton() {
   return (
-    <div className="grid gap-6 lg:grid-cols-[20rem_1fr]">
-      <div className="space-y-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-16 w-full" />
-        ))}
-      </div>
-      <Card className="p-5">
-        <Skeleton className="h-6 w-56" />
-        <Skeleton className="mt-3 h-4 w-80" />
-        <Skeleton className="mt-6 h-24 w-full" />
-      </Card>
+    <div className="space-y-3">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-20 w-full rounded-(--radius-card)" />
+      ))}
     </div>
   )
 }
@@ -271,79 +284,66 @@ function BuilderSkeleton() {
 // Module list (left pane)
 // ---------------------------------------------------------------------------
 
-function ModuleList({
-  modules, selectedId, onSelect,
+function SectionList({
+  modules, expanded, onToggle, onAddSection,
 }: {
   modules: ModuleTree[]
-  selectedId: string | null
-  onSelect: (id: string) => void
+  expanded: Set<string>
+  onToggle: (id: string) => void
+  onAddSection: () => void
 }) {
   const { cid } = useBuilder()
   const reorder = useAction(
     (ids: string[]) => api.post(`/lms/curricula/${cid}/modules/reorder`, { ids }),
-    { error: 'Could not reorder modules' },
+    { error: 'Could not reorder sections' },
   )
 
   return (
-    <div className="space-y-2">
-      {modules.map((m, i) => {
-        const active = m.id === selectedId
-        return (
-          <div
-            key={m.id}
-            className={cn(
-              'flex items-start gap-2 rounded-lg border p-3 transition-colors',
-              active
-                ? 'border-(--color-primary) bg-(--color-sidebar-active)'
-                : 'border-(--color-border) bg-(--color-card) hover:bg-(--color-muted)',
-            )}
-          >
-            <ReorderControls
-              onUp={() => reorder.mutate(moveIds(modules, i, -1))}
-              onDown={() => reorder.mutate(moveIds(modules, i, 1))}
-              disableUp={i === 0}
-              disableDown={i === modules.length - 1}
-            />
-            <button
-              type="button"
-              onClick={() => onSelect(m.id)}
-              className="min-w-0 flex-1 cursor-pointer text-left"
-            >
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-5 w-5 flex-none items-center justify-center rounded bg-(--color-muted) text-xs font-semibold tabular-nums text-(--color-muted-foreground)">
-                  {i + 1}
-                </span>
-                <p className="truncate font-medium text-(--color-foreground)">{m.title || 'Untitled module'}</p>
-              </div>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-7">
-                <PublishBadge published={m.is_published} />
-                <span className="text-xs text-(--color-muted-foreground)">
-                  {m.lessons.length} {m.lessons.length === 1 ? 'lesson' : 'lessons'}
-                </span>
-              </div>
-            </button>
-          </div>
-        )
-      })}
+    <div className="space-y-3">
+      {modules.map((m, i) => (
+        <SectionCard
+          key={m.id}
+          module={m}
+          index={i}
+          count={modules.length}
+          open={expanded.has(m.id)}
+          onToggle={() => onToggle(m.id)}
+          onMove={(dir) => reorder.mutate(moveIds(modules, i, dir))}
+        />
+      ))}
+      <button
+        type="button"
+        onClick={onAddSection}
+        className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-(--radius-card) border border-dashed border-(--color-border) bg-(--color-card) py-3.5 text-sm font-medium text-(--color-muted-foreground) transition-colors hover:border-(--color-primary) hover:text-(--color-primary)"
+      >
+        <Plus className="h-4 w-4" /> Add Section
+      </button>
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Module panel (right pane)
-// ---------------------------------------------------------------------------
-
-function ModulePanel({ module }: { module: ModuleTree }) {
+// A section (module): collapsible card holding its lessons and section quiz.
+function SectionCard({
+  module, index, count, open, onToggle, onMove,
+}: {
+  module: ModuleTree
+  index: number
+  count: number
+  open: boolean
+  onToggle: () => void
+  onMove: (dir: -1 | 1) => void
+}) {
+  const confirm = useConfirm()
   const [editOpen, setEditOpen] = React.useState(false)
   const [addLessonOpen, setAddLessonOpen] = React.useState(false)
 
   const publish = useAction(
     (next: boolean) => api.patch(`/lms/modules/${module.id}`, { is_published: next }),
-    { success: 'Module updated', error: 'Could not update module' },
+    { success: 'Section updated', error: 'Could not update section' },
   )
   const del = useAction(() => api.delete(`/lms/modules/${module.id}`), {
-    success: 'Module deleted',
-    error: 'Could not delete module',
+    success: 'Section deleted',
+    error: 'Could not delete section',
   })
   const reorderLessons = useAction(
     (ids: string[]) => api.post(`/lms/modules/${module.id}/lessons/reorder`, { ids }),
@@ -353,51 +353,76 @@ function ModulePanel({ module }: { module: ModuleTree }) {
   const lessons = [...module.lessons].sort((a, b) => a.order_index - b.order_index)
 
   return (
-    <div className="space-y-5">
-      <Card>
-        <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <CardTitle className="truncate text-lg">{module.title || 'Untitled module'}</CardTitle>
+    <div className="overflow-hidden rounded-(--radius-card) border border-(--color-border) bg-(--color-card) shadow-(--shadow-card)">
+      {/* Header */}
+      <div className="flex items-center gap-2 p-3 sm:gap-3 sm:p-4">
+        <ReorderControls
+          onUp={() => onMove(-1)}
+          onDown={() => onMove(1)}
+          disableUp={index === 0}
+          disableDown={index === count - 1}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+        >
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-(--color-sidebar-active) font-display text-sm font-bold text-(--color-primary)">
+            {index + 1}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="truncate font-display font-semibold">{module.title || 'Untitled section'}</span>
               <PublishBadge published={module.is_published} />
-            </div>
-            {module.description && (
-              <p className="mt-1.5 text-sm text-(--color-muted-foreground)">{module.description}</p>
-            )}
-          </div>
-          <div className="flex flex-none items-center gap-1">
-            <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-              <Pencil className="h-3.5 w-3.5" /> Edit
-            </Button>
-            <Button
-              size="sm"
-              variant={module.is_published ? 'ghost' : 'accent'}
-              loading={publish.isPending}
-              onClick={() => publish.mutate(!module.is_published)}
-            >
-              {module.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-              {module.is_published ? 'Unpublish' : 'Publish'}
-            </Button>
-            <IconDelete
-              label="Delete module"
-              pending={del.isPending}
-              onClick={() => {
-                if (window.confirm('Delete this module and all its lessons?')) del.mutate()
-              }}
-            />
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {/* Lessons */}
+            </span>
+            <span className="text-xs text-(--color-muted-foreground)">
+              {lessons.length} {lessons.length === 1 ? 'lesson' : 'lessons'}{module.quiz ? ' · quiz' : ''}
+            </span>
+          </span>
+          <ChevronDown className={cn('h-4 w-4 shrink-0 text-(--color-muted-foreground) transition-transform', !open && '-rotate-90')} />
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button size="sm" variant="outline" onClick={() => setEditOpen(true)} className="hidden sm:inline-flex">
+            <Pencil className="h-3.5 w-3.5" /> Edit
+          </Button>
+          <Button
+            size="sm"
+            variant={module.is_published ? 'ghost' : 'accent'}
+            loading={publish.isPending}
+            onClick={() => publish.mutate(!module.is_published)}
+          >
+            {module.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">{module.is_published ? 'Unpublish' : 'Publish'}</span>
+          </Button>
+          <IconDelete
+            label="Delete section"
+            pending={del.isPending}
+            onClick={async () => {
+              if (await confirm({
+                title: 'Delete section?',
+                description: 'This deletes the section and every lesson, content block and quiz inside it. This cannot be undone.',
+                confirmLabel: 'Delete',
+                tone: 'danger',
+              })) del.mutate()
+            }}
+          />
+        </div>
+      </div>
+
+      {open && (
+        <div className="space-y-4 border-t border-(--color-border) bg-(--color-muted)/30 p-3 sm:p-4">
+          {module.description && <p className="text-sm text-(--color-muted-foreground)">{module.description}</p>}
+
           <div className="flex items-center justify-between">
-            <h4 className="font-display text-sm font-semibold text-(--color-foreground)">Lessons</h4>
+            <h4 className="font-display text-sm font-semibold">Lessons</h4>
             <Button size="sm" variant="outline" onClick={() => setAddLessonOpen(true)}>
               <Plus className="h-3.5 w-3.5" /> Add Lesson
             </Button>
           </div>
           {lessons.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-(--color-border) px-4 py-6 text-center text-sm text-(--color-muted-foreground)">
-              No lessons yet. Add one to get started.
+            <p className="rounded-lg border border-dashed border-(--color-border) bg-(--color-card) px-4 py-6 text-center text-sm text-(--color-muted-foreground)">
+              No lessons yet. Add your first lesson to this section.
             </p>
           ) : (
             <div className="space-y-2">
@@ -412,27 +437,20 @@ function ModulePanel({ module }: { module: ModuleTree }) {
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
 
-      {/* Module quiz */}
-      <QuizSection quiz={module.quiz} kind="module" parentId={module.id} />
+          <QuizSection quiz={module.quiz} kind="module" parentId={module.id} />
+        </div>
+      )}
 
-      <ModuleFormDialog
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        module={module}
-        nextOrder={module.order_index}
-      />
-      <LessonFormDialog
-        open={addLessonOpen}
-        onClose={() => setAddLessonOpen(false)}
-        moduleId={module.id}
-        nextOrder={lessons.length}
-      />
+      <ModuleFormDialog open={editOpen} onClose={() => setEditOpen(false)} module={module} nextOrder={module.order_index} />
+      <LessonFormDialog open={addLessonOpen} onClose={() => setAddLessonOpen(false)} moduleId={module.id} nextOrder={lessons.length} />
     </div>
   )
 }
+
+// ---------------------------------------------------------------------------
+// Module panel (right pane)
+// ---------------------------------------------------------------------------
 
 function ModuleFormDialog({
   open, onClose, module, nextOrder,
@@ -458,14 +476,27 @@ function ModuleFormDialog({
         ? api.patch(`/lms/modules/${module.id}`, { title, description })
         : api.post(`/lms/curricula/${cid}/modules`, { title, description, order_index: nextOrder }),
     {
-      success: module ? 'Module updated' : 'Module created',
-      error: 'Could not save module',
+      success: module ? 'Section updated' : 'Section created',
+      error: 'Could not save section',
     },
   )
 
   return (
-    <Dialog open={open} onClose={onClose} title={module ? 'Edit Module' : 'New Module'}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={module ? 'Edit Section' : 'New Section'}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="section-form" loading={save.isPending}>
+            {module ? 'Save Changes' : 'Create Section'}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="section-form"
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
@@ -479,10 +510,6 @@ function ModuleFormDialog({
         <div>
           <Label htmlFor="module-desc">Description</Label>
           <Textarea id="module-desc" value={description} onChange={(e) => setDescription(e.target.value)} />
-        </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={save.isPending}>{module ? 'Save Changes' : 'Create Module'}</Button>
         </div>
       </form>
     </Dialog>
@@ -501,6 +528,7 @@ function LessonRow({
   count: number
   onMove: (dir: -1 | 1) => void
 }) {
+  const confirm = useConfirm()
   const [expanded, setExpanded] = React.useState(false)
   const [editOpen, setEditOpen] = React.useState(false)
 
@@ -543,8 +571,13 @@ function LessonRow({
         <IconDelete
           label="Delete lesson"
           pending={del.isPending}
-          onClick={() => {
-            if (window.confirm('Delete this lesson?')) del.mutate()
+          onClick={async () => {
+            if (await confirm({
+              title: 'Delete lesson?',
+              description: 'This deletes the lesson and all its content blocks and quiz. This cannot be undone.',
+              confirmLabel: 'Delete',
+              tone: 'danger',
+            })) del.mutate()
           }}
         />
       </div>
@@ -616,8 +649,21 @@ function LessonFormDialog({
   )
 
   return (
-    <Dialog open={open} onClose={onClose} title={lesson ? 'Edit Lesson' : 'New Lesson'}>
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={lesson ? 'Edit Lesson' : 'New Lesson'}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="lesson-form" loading={save.isPending}>
+            {lesson ? 'Save Changes' : 'Create Lesson'}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="lesson-form"
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
@@ -644,14 +690,10 @@ function LessonFormDialog({
             type="checkbox"
             checked={published}
             onChange={(e) => setPublished(e.target.checked)}
-            className="h-4 w-4 cursor-pointer accent-indigo-600"
+            className="h-4 w-4 cursor-pointer accent-emerald-600"
           />
           Published
         </label>
-        <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={save.isPending}>{lesson ? 'Save Changes' : 'Create Lesson'}</Button>
-        </div>
       </form>
     </Dialog>
   )
@@ -718,6 +760,7 @@ function BlockEditor({
   count: number
   onMove: (dir: -1 | 1) => void
 }) {
+  const confirm = useConfirm()
   const meta = BLOCK_TYPE_META[block.type]
   const Icon = meta.icon
 
@@ -746,8 +789,13 @@ function BlockEditor({
           <IconDelete
             label="Delete block"
             pending={del.isPending}
-            onClick={() => {
-              if (window.confirm('Delete this block?')) del.mutate()
+            onClick={async () => {
+              if (await confirm({
+                title: 'Delete content block?',
+                description: 'This block and its content will be permanently removed.',
+                confirmLabel: 'Delete',
+                tone: 'danger',
+              })) del.mutate()
             }}
           />
         </div>
@@ -759,9 +807,15 @@ function BlockEditor({
   )
 }
 
-function SaveBlockButton({ onClick, saving }: { onClick: () => void; saving: boolean }) {
+function SaveBlockButton({
+  onClick, saving, disabled,
+}: {
+  onClick: () => void
+  saving: boolean
+  disabled?: boolean
+}) {
   return (
-    <Button size="sm" variant="accent" loading={saving} onClick={onClick}>
+    <Button size="sm" variant="accent" loading={saving} disabled={disabled} onClick={onClick}>
       <Save className="h-3.5 w-3.5" /> Save
     </Button>
   )
@@ -774,17 +828,59 @@ function TextBlockBody({
   onSave: (content: Record<string, unknown>) => void
   saving: boolean
 }) {
+  const [title, setTitle] = React.useState(String(block.content.title ?? ''))
   const [markdown, setMarkdown] = React.useState(String(block.content.markdown ?? ''))
+  const [url, setUrl] = React.useState(String(block.content.url ?? ''))
+  const blockId = block.id
+  const linkInvalid = url.trim() !== '' && !/^https?:\/\//i.test(url.trim())
   return (
     <div className="space-y-2">
-      <Textarea
-        aria-label="Text content"
-        value={markdown}
-        onChange={(e) => setMarkdown(e.target.value)}
-        placeholder="Write content (markdown supported)…"
-      />
+      <div>
+        <Label htmlFor={`txt-title-${blockId}`}>Article title <span className="font-normal text-(--color-muted-foreground)">(optional)</span></Label>
+        <Input
+          id={`txt-title-${blockId}`}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="e.g. Introduction to Neural Networks"
+        />
+      </div>
+      <div>
+        <Label htmlFor={`txt-body-${blockId}`}>Article</Label>
+        <Textarea
+          id={`txt-body-${blockId}`}
+          aria-label="Article content"
+          className="min-h-40"
+          value={markdown}
+          onChange={(e) => setMarkdown(e.target.value)}
+          placeholder="Write or paste your article here. Plain text works; markdown (**bold**, lists, `code`) and links like [read more](https://…) are supported too."
+        />
+      </div>
+      <div>
+        <Label htmlFor={`txt-link-${blockId}`}>
+          Article link <span className="font-normal text-(--color-muted-foreground)">(optional)</span>
+        </Label>
+        <Input
+          id={`txt-link-${blockId}`}
+          type="url"
+          inputMode="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com/full-article"
+        />
+        {linkInvalid ? (
+          <p className="mt-1 text-xs text-(--color-destructive)">Link must start with http:// or https://</p>
+        ) : (
+          <p className="mt-1 text-xs text-(--color-muted-foreground)">
+            Students see this as a “Read the full article” button below the text.
+          </p>
+        )}
+      </div>
       <div className="flex justify-end">
-        <SaveBlockButton saving={saving} onClick={() => onSave({ markdown })} />
+        <SaveBlockButton
+          saving={saving}
+          disabled={linkInvalid}
+          onClick={() => onSave({ title, markdown, url: url.trim() })}
+        />
       </div>
     </div>
   )
@@ -844,9 +940,44 @@ function ImageBlockBody({
 }) {
   const [url, setUrl] = React.useState(String(block.content.url ?? ''))
   const [caption, setCaption] = React.useState(String(block.content.caption ?? ''))
+  const [uploading, setUploading] = React.useState(false)
+  const fileRef = React.useRef<HTMLInputElement>(null)
   const blockId = block.id
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = '' // allow re-picking the same file
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file')
+      return
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      toast.error('Image must be under 3 MB')
+      return
+    }
+    setUploading(true)
+    try {
+      setUrl(await fileToDataUrl(file))
+    } catch {
+      toast.error('Could not read that image')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <div className="space-y-2">
+      <div>
+        <Label>Image</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPickFile} />
+          <Button type="button" variant="outline" loading={uploading} onClick={() => fileRef.current?.click()}>
+            <Upload className="h-4 w-4" /> Upload image
+          </Button>
+          <span className="text-xs text-(--color-muted-foreground)">or paste a URL below</span>
+        </div>
+      </div>
       <div>
         <Label htmlFor={`img-url-${blockId}`}>Image URL</Label>
         <Input id={`img-url-${blockId}`} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
@@ -890,15 +1021,16 @@ function QuizSection({
     { success: 'Quiz created', error: 'Could not create quiz' },
   )
 
+  const kindLabel = kind === 'module' ? 'section' : 'lesson'
   if (!quiz) {
     return (
-      <div className="rounded-lg border border-dashed border-(--color-border) p-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-card) p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm text-(--color-muted-foreground)">
-            <HelpCircle className="h-4 w-4" /> No {kind} quiz yet.
+            <HelpCircle className="h-4 w-4 text-(--color-primary)" /> Add a quiz to test what students learned in this {kindLabel}.
           </div>
           <Button size="sm" variant="outline" loading={create.isPending} onClick={() => create.mutate()}>
-            <Plus className="h-3.5 w-3.5" /> Add {kind} quiz
+            <Plus className="h-3.5 w-3.5" /> Add {kindLabel} quiz
           </Button>
         </div>
       </div>
@@ -908,6 +1040,7 @@ function QuizSection({
 }
 
 function QuizEditor({ quiz, kind }: { quiz: Quiz; kind: 'module' | 'lesson' }) {
+  const confirm = useConfirm()
   const [pass, setPass] = React.useState(String(quiz.pass_percentage))
   const [maxAttempts, setMaxAttempts] = React.useState(quiz.max_attempts != null ? String(quiz.max_attempts) : '')
 
@@ -934,7 +1067,8 @@ function QuizEditor({ quiz, kind }: { quiz: Quiz; kind: 'module' | 'lesson' }) {
           : []
       const correct: unknown[] = type === 'true_false' ? [true] : type === 'short_answer' ? [''] : []
       return api.post(`/lms/quizzes/${quiz.id}/questions`, {
-        prompt: '',
+        // The API requires a non-empty prompt; the author edits this inline.
+        prompt: 'New question',
         type,
         order_index: quiz.questions.length,
         options,
@@ -953,18 +1087,23 @@ function QuizEditor({ quiz, kind }: { quiz: Quiz; kind: 'module' | 'lesson' }) {
   const questions = [...quiz.questions].sort((a, b) => a.order_index - b.order_index)
 
   return (
-    <Card className="border-indigo-200 dark:border-indigo-500/30">
+    <Card className="border-emerald-200 dark:border-emerald-500/30">
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle className="flex items-center gap-2">
           <HelpCircle className="h-4 w-4 text-(--color-primary)" />
-          {kind === 'module' ? 'Module Quiz' : 'Lesson Quiz'}
+          {kind === 'module' ? 'Section Quiz' : 'Lesson Quiz'}
           <Badge variant="default" className="tabular-nums">{questions.length} Q</Badge>
         </CardTitle>
         <IconDelete
           label="Delete quiz"
           pending={del.isPending}
-          onClick={() => {
-            if (window.confirm('Delete this quiz and all its questions?')) del.mutate()
+          onClick={async () => {
+            if (await confirm({
+              title: 'Delete quiz?',
+              description: 'This deletes the quiz and all its questions. Student attempts for it are removed too. This cannot be undone.',
+              confirmLabel: 'Delete',
+              tone: 'danger',
+            })) del.mutate()
           }}
         />
       </CardHeader>
@@ -1030,6 +1169,7 @@ function QuestionEditor({
   count: number
   onMove: (dir: -1 | 1) => void
 }) {
+  const confirm = useConfirm()
   const [prompt, setPrompt] = React.useState(question.prompt)
   const [points, setPoints] = React.useState(String(question.points))
   const [explanation, setExplanation] = React.useState(question.explanation ?? '')
@@ -1104,8 +1244,13 @@ function QuestionEditor({
           <IconDelete
             label="Delete question"
             pending={del.isPending}
-            onClick={() => {
-              if (window.confirm('Delete this question?')) del.mutate()
+            onClick={async () => {
+              if (await confirm({
+                title: 'Delete question?',
+                description: 'This question will be permanently removed from the quiz.',
+                confirmLabel: 'Delete',
+                tone: 'danger',
+              })) del.mutate()
             }}
           />
         </div>

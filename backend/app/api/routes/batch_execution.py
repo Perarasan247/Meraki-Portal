@@ -41,6 +41,13 @@ def create_batch_execution(
     client = get_scoped_client(user.access_token)
     branch_id = payload.branch_id if user.is_super_admin and payload.branch_id else user.branch_id
     if not branch_id:
+        # A super admin has no branch of their own — inherit it from the batch
+        # this execution tracks, so no branch needs to be passed in.
+        batch = (
+            client.table("batches").select("branch_id").eq("id", payload.batch_id).single().execute().data
+        )
+        branch_id = batch.get("branch_id") if batch else None
+    if not branch_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "branch_id is required")
 
     data = {

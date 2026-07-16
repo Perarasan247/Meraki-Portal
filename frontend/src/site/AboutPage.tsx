@@ -95,7 +95,7 @@ export default function AboutPage() {
           </div>
           <Link
             to="/contact"
-            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-(--color-primary) px-6 py-3 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-indigo-500"
+            className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-(--color-primary) px-6 py-3 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-emerald-700"
           >
             Get in touch <ArrowRight className="h-4 w-4" />
           </Link>

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight, Zap, Users, Activity, Award, BarChart3,
+  ArrowRight, Zap, Users, Activity, Award, BarChart3, Clock,
   Brain, MessageSquare, Cpu, Repeat, Code2, Cloud, Terminal, LineChart,
 } from 'lucide-react'
 
@@ -26,7 +26,7 @@ const PROGRAMS = [
     tags: ['Python', 'ML', 'Deep Learning', 'NLP'], duration: '10–12 weeks',
   },
   {
-    icon: MessageSquare, accent: '#9333ea',
+    icon: MessageSquare, accent: '#0891b2',
     title: 'Generative AI, LLMs & AI Agents',
     desc: 'Large Language Models, Generative AI, Prompt Engineering, AI Agents, Agentic AI workflows, Retrieval Augmented Generation (RAG) and Model Context Protocol (MCP).',
     tags: ['GenAI', 'LLMs', 'RAG', 'MCP'], duration: '8–10 weeks',
@@ -62,7 +62,7 @@ const PROGRAMS = [
     tags: ['Python', 'OOP', 'Pandas', 'NumPy'], duration: '6–8 weeks',
   },
   {
-    icon: LineChart, accent: '#6d28d9',
+    icon: LineChart, accent: '#db2777',
     title: 'Data Analytics & Visualisation',
     desc: 'Python, Pandas, NumPy, Power BI, Tableau and SQL — turning raw business data into actionable insights through statistical analysis and compelling dashboards.',
     tags: ['Power BI', 'Tableau', 'SQL', 'Pandas'], duration: '6–8 weeks',
@@ -78,20 +78,20 @@ export default function HomePage() {
           className="pointer-events-none absolute inset-0 opacity-80"
           style={{
             background:
-              'radial-gradient(40% 60% at 18% 50%, rgba(59,130,246,.30), transparent 70%), radial-gradient(40% 50% at 82% 15%, rgba(139,92,246,.26), transparent 70%), radial-gradient(35% 45% at 60% 90%, rgba(6,182,212,.20), transparent 70%)',
+              'radial-gradient(40% 60% at 18% 50%, rgba(16,185,129,.28), transparent 70%), radial-gradient(40% 50% at 82% 15%, rgba(13,148,136,.24), transparent 70%), radial-gradient(35% 45% at 60% 90%, rgba(5,150,105,.20), transparent 70%)',
           }}
         />
         <div className="relative mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 sm:py-28">
           <div className="font-display text-lg font-extrabold tracking-wide text-white sm:text-xl">
-            Meraki <span className="text-blue-400">Ai</span> Labs
+            Meraki <span className="text-emerald-400">Ai</span> Labs
           </div>
           <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-slate-200 backdrop-blur">
-            <Zap className="h-3.5 w-3.5 text-blue-400" />
+            <Zap className="h-3.5 w-3.5 text-emerald-400" />
             Technology Consulting & Digital Transformation
           </span>
           <h1 className="mx-auto mt-6 max-w-3xl font-display text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl md:text-6xl">
             Transforming Industries Through<br />
-            <em className="not-italic text-blue-400">Intelligent Innovation</em>
+            <em className="not-italic text-emerald-400">Intelligent Innovation</em>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-300">
             Meraki AI Labs is a Chennai-based technology consulting and
@@ -103,7 +103,7 @@ export default function HomePage() {
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Link
               to="/services"
-              className="inline-flex items-center gap-2 rounded-lg bg-(--color-primary) px-6 py-3 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-indigo-500"
+              className="inline-flex items-center gap-2 rounded-lg bg-(--color-primary) px-6 py-3 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-emerald-700"
             >
               Explore Services <ArrowRight className="h-4 w-4" />
             </Link>
@@ -180,7 +180,9 @@ export default function HomePage() {
                   </span>
                 ))}
               </div>
-              <div className="mt-3 text-xs text-(--color-muted-foreground)">⏱ {p.duration}</div>
+              <div className="mt-3 flex items-center gap-1.5 text-xs text-(--color-muted-foreground)">
+                <Clock className="h-3.5 w-3.5" /> {p.duration}
+              </div>
             </div>
           ))}
         </div>
@@ -189,7 +191,7 @@ export default function HomePage() {
         <div className="mt-14 text-center">
           <Link
             to="/contact"
-            className="inline-flex items-center gap-2 rounded-lg bg-(--color-primary) px-8 py-3.5 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-indigo-500"
+            className="inline-flex items-center gap-2 rounded-lg bg-(--color-primary) px-8 py-3.5 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-emerald-700"
           >
             Apply for Internship <ArrowRight className="h-4 w-4" />
           </Link>

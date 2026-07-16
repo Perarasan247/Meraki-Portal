@@ -9,24 +9,26 @@
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
 
-  --color-primary: #6366f1;
+  /* Meraki green — unified brand primary (matches the logo). */
+  --color-primary: #059669;         /* emerald-600 */
   --color-primary-foreground: #ffffff;
-  --color-secondary: #818cf8;
-  --color-accent: #059669;
+  --color-secondary: #10b981;       /* emerald-500 */
+  --color-accent: #0d9488;          /* teal-600 — secondary CTA / variety */
   --color-accent-foreground: #ffffff;
   --color-destructive: #dc2626;
   --color-destructive-foreground: #ffffff;
 
-  --color-chart-1: #6366f1;
-  --color-chart-2: #10b981;
+  --color-chart-1: #059669;
+  --color-chart-2: #0d9488;
   --color-chart-3: #f59e0b;
   --color-chart-4: #f43f5e;
   --color-chart-5: #06b6d4;
   --color-chart-6: #8b5cf6;
 
   --radius-card: 1rem;
-  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
-  --shadow-card-hover: 0 4px 12px -2px rgb(15 23 42 / 0.08), 0 2px 6px -2px rgb(15 23 42 / 0.06);
+  /* Softer, more premium elevation. */
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.05);
+  --shadow-card-hover: 0 6px 20px -4px rgb(15 23 42 / 0.10), 0 2px 8px -3px rgb(15 23 42 / 0.06);
 }
 
 :root {
@@ -36,43 +38,43 @@
   --color-card-foreground: #0f172a;
   --color-muted: #f1f5f9;
   --color-muted-foreground: #64748b;
-  --color-border: #e2e8f0;
+  --color-border: #e6eaef;
   --color-input: #e2e8f0;
-  --color-ring: #6366f1;
+  --color-ring: #059669;
   --color-sidebar: #ffffff;
   --color-sidebar-foreground: #334155;
-  --color-sidebar-active: #eef2ff;
+  --color-sidebar-active: #ecfdf5;
 }
 
 :root[data-theme='dark'] {
-  --color-background: #0b1120;
+  --color-background: #0a0f1a;
   --color-foreground: #f1f5f9;
   --color-card: #111827;
   --color-card-foreground: #f1f5f9;
   --color-muted: #1e293b;
   --color-muted-foreground: #94a3b8;
-  --color-border: #1e293b;
-  --color-input: #1e293b;
-  --color-ring: #818cf8;
+  --color-border: #232f43;
+  --color-input: #232f43;
+  --color-ring: #34d399;
   --color-sidebar: #0f172a;
   --color-sidebar-foreground: #cbd5e1;
-  --color-sidebar-active: #1e2542;
+  --color-sidebar-active: #10312a;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --color-background: #0b1120;
+    --color-background: #0a0f1a;
     --color-foreground: #f1f5f9;
     --color-card: #111827;
     --color-card-foreground: #f1f5f9;
     --color-muted: #1e293b;
     --color-muted-foreground: #94a3b8;
-    --color-border: #1e293b;
-    --color-input: #1e293b;
-    --color-ring: #818cf8;
+    --color-border: #232f43;
+    --color-input: #232f43;
+    --color-ring: #34d399;
     --color-sidebar: #0f172a;
     --color-sidebar-foreground: #cbd5e1;
-    --color-sidebar-active: #1e2542;
+    --color-sidebar-active: #10312a;
   }
 }
 
@@ -85,9 +87,18 @@
     color: var(--color-foreground);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
   h1, h2, h3, h4 {
     font-family: var(--font-display);
+    letter-spacing: -0.02em;   /* tighter display tracking for a premium feel */
+  }
+  /* Consistent, on-brand focus ring across all interactive elements. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
   ::selection {
     background-color: color-mix(in srgb, var(--color-primary) 25%, transparent);

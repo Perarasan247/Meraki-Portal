@@ -1,11 +1,12 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, Users, ShieldCheck, CircleDot } from 'lucide-react'
+import { Plus, Users, ShieldCheck, CircleDot, Pencil } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { useConfirm } from '@/components/ui/confirm'
 import { Input, Select } from '@/components/ui/input'
 import { PageHeader } from '@/components/ui/page-header'
 import { Badge } from '@/components/ui/badge'
@@ -15,14 +16,16 @@ import { TableSkeleton } from '@/components/ui/skeleton'
 import { cn, formatDate } from '@/lib/utils'
 import { MODULE_META, type ManagedUser, type ModuleKey, type UserRole } from '@/lib/types'
 import { NewUserDialog } from '@/pages/users/NewUserDialog'
+import { EditUserDialog } from '@/pages/users/EditUserDialog'
 
-const ROLES: UserRole[] = ['super_admin', 'branch_admin', 'staff', 'custom']
+const ROLES: UserRole[] = ['super_admin', 'branch_admin', 'trainer', 'staff', 'custom']
 
 const ROLE_VARIANT: Record<UserRole, 'primary' | 'info' | 'default' | 'warning'> = {
   super_admin: 'primary',
   branch_admin: 'info',
+  trainer: 'warning',
   staff: 'default',
-  custom: 'warning',
+  custom: 'default',
 }
 
 function useUsers() {
@@ -44,8 +47,10 @@ function roleLabel(role: string): string {
 }
 
 export default function UsersPage() {
+  const confirm = useConfirm()
   const { profile } = useAuth()
   const [formOpen, setFormOpen] = React.useState(false)
+  const [editing, setEditing] = React.useState<ManagedUser | null>(null)
   const [search, setSearch] = React.useState('')
   const [roleFilter, setRoleFilter] = React.useState('')
   const { data: users, isLoading } = useUsers()
@@ -68,7 +73,24 @@ export default function UsersPage() {
     onError: () => toast.error('Could not deactivate user'),
   })
 
-  const list = users ?? []
+  const reactivateMutation = useMutation({
+    mutationFn: (id: string) => api.patch(`/users/${id}`, { is_active: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast.success('User reactivated')
+    },
+    onError: () => toast.error('Could not reactivate user'),
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/users/${id}?hard=true`),
+    onSuccess: () => toast.success('User deleted'),
+    onError: () => toast.error('Could not delete user'),
+    // Refetch either way so the table can never show records that are gone.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+  })
+
+  const list = React.useMemo(() => users ?? [], [users])
 
   const summary = React.useMemo(() => {
     return {
@@ -96,7 +118,7 @@ export default function UsersPage() {
               placeholder="Search name, email…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-52"
+              className="w-full sm:w-52"
             />
             <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)} className="w-auto">
               <option value="">All roles</option>
@@ -106,7 +128,7 @@ export default function UsersPage() {
             </Select>
             {isSuperAdmin && (
               <Button onClick={() => setFormOpen(true)}>
-                <Plus className="h-4 w-4" /> New User
+                <Plus className="h-4 w-4" /> New Admin
               </Button>
             )}
           </>
@@ -175,15 +197,49 @@ export default function UsersPage() {
                     </TableCell>
                     {isSuperAdmin && (
                       <TableCell className="text-right">
-                        {u.is_active && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            loading={deactivateMutation.isPending}
-                            onClick={() => deactivateMutation.mutate(u.id)}
-                          >
-                            Deactivate
-                          </Button>
+                        {u.role === 'super_admin' ? null : (
+                          <div className="flex items-center justify-end gap-1">
+                            <Button size="sm" variant="ghost" onClick={() => setEditing(u)}>
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </Button>
+                            {u.is_active ? (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                loading={deactivateMutation.isPending}
+                                onClick={() => deactivateMutation.mutate(u.id)}
+                              >
+                                Deactivate
+                              </Button>
+                            ) : (
+                              <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              loading={reactivateMutation.isPending}
+                              onClick={() => reactivateMutation.mutate(u.id)}
+                            >
+                              Reactivate
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-(--color-destructive) hover:bg-(--color-destructive)/10 hover:text-(--color-destructive)"
+                              loading={deleteMutation.isPending}
+                              onClick={async () => {
+                                if (await confirm({
+                                  title: `Delete ${u.full_name}?`,
+                                  description: 'This permanently removes their login and account. This cannot be undone.',
+                                  confirmLabel: 'Delete user',
+                                  tone: 'danger',
+                                })) deleteMutation.mutate(u.id)
+                              }}
+                            >
+                              Delete
+                            </Button>
+                              </>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                     )}
@@ -195,7 +251,12 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      {isSuperAdmin && <NewUserDialog open={formOpen} onClose={() => setFormOpen(false)} />}
+      {isSuperAdmin && (
+        <>
+          <NewUserDialog open={formOpen} onClose={() => setFormOpen(false)} />
+          <EditUserDialog user={editing} onClose={() => setEditing(null)} />
+        </>
+      )}
     </div>
   )
 }
@@ -214,7 +275,7 @@ function SummaryChip({
   const toneClass = {
     default: 'text-(--color-muted-foreground)',
     success: 'text-emerald-600 dark:text-emerald-400',
-    primary: 'text-indigo-600 dark:text-indigo-400',
+    primary: 'text-emerald-600 dark:text-emerald-400',
   }[tone]
   return (
     <div className="inline-flex items-center gap-2 rounded-full border border-(--color-border) bg-(--color-card) px-3 py-1.5 text-sm">

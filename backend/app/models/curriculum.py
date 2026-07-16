@@ -20,6 +20,7 @@ class CurriculumCreate(BaseModel):
     status: CurriculumStatus = "Draft"
     phases: list[CurriculumPhase] = []
     branch_id: str | None = None
+    domain_id: str | None = None  # internship domain this content is for
 
 
 class CurriculumUpdate(BaseModel):
@@ -27,11 +28,13 @@ class CurriculumUpdate(BaseModel):
     title: str | None = None
     status: CurriculumStatus | None = None
     phases: list[CurriculumPhase] | None = None
+    domain_id: str | None = None
 
 
 class CurriculumOut(BaseModel):
     id: str
     branch_id: str
+    domain_id: str | None = None
     program: str
     title: str
     status: CurriculumStatus

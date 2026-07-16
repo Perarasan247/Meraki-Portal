@@ -11,6 +11,7 @@ class BatchCreate(BaseModel):
     batch_name: str = Field(min_length=1)
     program: str = Field(min_length=1)
     trainer: str | None = None
+    venue: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     seats_total: int = 0
@@ -24,6 +25,7 @@ class BatchUpdate(BaseModel):
     batch_name: str | None = None
     program: str | None = None
     trainer: str | None = None
+    venue: str | None = None
     start_date: date | None = None
     end_date: date | None = None
     seats_total: int | None = None
@@ -38,6 +40,7 @@ class BatchOut(BaseModel):
     batch_name: str
     program: str
     trainer: str | None
+    venue: str | None = None
     start_date: date | None
     end_date: date | None
     seats_total: int

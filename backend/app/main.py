@@ -18,6 +18,10 @@ from app.api.routes import (
     branches,
     public,
     lms,
+    domains,
+    students,
+    student_portal,
+    auth_public,
 )
 
 settings = get_settings()
@@ -48,3 +52,7 @@ app.include_router(account.router, prefix=api_prefix)
 app.include_router(branches.router, prefix=api_prefix)
 app.include_router(public.router, prefix=api_prefix)
 app.include_router(lms.router, prefix=api_prefix)
+app.include_router(domains.router, prefix=api_prefix)
+app.include_router(students.router, prefix=api_prefix)
+app.include_router(student_portal.router, prefix=api_prefix)
+app.include_router(auth_public.router, prefix=api_prefix)

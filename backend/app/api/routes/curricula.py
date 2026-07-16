@@ -67,12 +67,37 @@ def update_curriculum(
 
 
 @router.delete("/{curriculum_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_curriculum(curriculum_id: str, user: CurrentUser = Depends(require_module(MODULE))):
+def delete_curriculum(
+    curriculum_id: str,
+    force: bool = False,
+    user: CurrentUser = Depends(require_module(MODULE)),
+):
+    """Deletes the internship and (via ON DELETE CASCADE) its sections, lessons,
+    content blocks and quizzes.
+
+    batch_execution.curriculum_id has no cascade and holds real batch progress,
+    so if any batch tracks this internship we answer 409 and let the caller
+    confirm. Re-sending with ``force=true`` drops that tracking first.
+    """
     client = get_scoped_client(user.access_token)
+
+    linked = (
+        client.table("batch_execution").select("id").eq("curriculum_id", curriculum_id).execute().data
+    )
+    if linked and not force:
+        n = len(linked)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"This internship is tracked by {n} batch{'es' if n > 1 else ''} in Batch Execution. "
+            f"Deleting it will also remove that batch progress tracking.",
+        )
+    if linked:
+        client.table("batch_execution").delete().eq("curriculum_id", curriculum_id).execute()
+
     result = client.table("curricula").delete().eq("id", curriculum_id).execute()
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Curriculum not found")
-    log_audit(client, user, "delete", "curriculum", curriculum_id)
+    log_audit(client, user, "delete", "curriculum", curriculum_id, {"forced": bool(linked)})
 
 
 @router.patch("/{curriculum_id}/publish", response_model=CurriculumOut)

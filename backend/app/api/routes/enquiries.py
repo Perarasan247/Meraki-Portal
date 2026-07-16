@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import CurrentUser, require_module
+from app.core.pagination import ilike_or, paginate
 from app.core.scoping import apply_branch_filter, log_audit, resolve_branch_id
 from app.core.supabase_client import get_scoped_client
 from app.models.enquiry import (
@@ -9,30 +10,45 @@ from app.models.enquiry import (
     EnquiryOut,
     EnquiryUpdate,
 )
+from app.models.pagination import Page
 from app.services.excel_export import export_rows_to_xlsx
 
 router = APIRouter(prefix="/enquiries", tags=["enquiries"])
 
 MODULE = "enquiry"
 
+# Only the columns the list view needs (avoids over-fetching wide rows).
+_LIST_COLS = (
+    "id,branch_id,student_name,email,mobile,college,program,year_of_study,"
+    "reference_source,campaign_id,status,notes,created_at,converted_enrollment_id"
+)
 
-@router.get("", response_model=list[EnquiryOut])
+
+@router.get("", response_model=None)
 def list_enquiries(
     branch_id: str | None = None,
     status_filter: str | None = None,
     program: str | None = None,
+    search: str | None = None,
+    page: int | None = None,
+    page_size: int = 25,
     user: CurrentUser = Depends(require_module(MODULE)),
-):
+) -> list[dict] | Page:
+    """Returns a plain array when no ``page`` is given (aggregate/board views),
+    or a paginated ``Page`` envelope when ``page`` is provided (list tables)."""
     client = get_scoped_client(user.access_token)
     scope = resolve_branch_id(user, branch_id)
-    query = client.table("enquiries").select("*").order("created_at", desc=True)
+    query = client.table("enquiries").select(_LIST_COLS, count="exact").order("created_at", desc=True)
     query = apply_branch_filter(query, scope)
     if status_filter:
         query = query.eq("status", status_filter)
     if program:
         query = query.eq("program", program)
-    result = query.execute()
-    return result.data
+    if search and search.strip():
+        query = query.or_(ilike_or(search, ["student_name", "mobile", "program", "email"]))
+    if page is None:
+        return query.execute().data
+    return paginate(query, page, page_size)
 
 
 @router.get("/export")
@@ -109,6 +125,9 @@ def convert_to_enrollment(
                 "branch_id": enquiry["branch_id"],
                 "student_name": enquiry["student_name"],
                 "mobile": enquiry["mobile"],
+                # Carry the contact details captured on the enquiry.
+                "email": enquiry.get("email"),
+                "college": enquiry.get("college"),
                 "program": enquiry["program"],
                 "year_of_study": enquiry["year_of_study"],
                 "batch_id": payload.batch_id,

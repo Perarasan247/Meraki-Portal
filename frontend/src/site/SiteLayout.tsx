@@ -1,8 +1,10 @@
 import * as React from 'react'
 import { Outlet, NavLink, Link } from 'react-router-dom'
-import { Sparkles, Menu, X, Mail, MapPin, Phone } from 'lucide-react'
+import { Menu, X, Mail, MapPin, Phone } from 'lucide-react'
+import { MerakiLogo } from '@/components/MerakiLogo'
 import { cn } from '@/lib/utils'
 import { ThemeToggle } from '@/components/ui/theme-toggle'
+import { PageLoader } from '@/components/PageLoader'
 
 const NAV = [
   { to: '/', label: 'Home', end: true },
@@ -14,9 +16,7 @@ const NAV = [
 function Brand({ onClick }: { onClick?: () => void }) {
   return (
     <Link to="/" onClick={onClick} className="flex items-center gap-2">
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-(--color-primary) text-(--color-primary-foreground)">
-        <Sparkles className="h-4.5 w-4.5" />
-      </span>
+      <MerakiLogo className="h-8 w-auto" />
       <span className="font-display text-lg font-bold tracking-tight text-(--color-foreground)">
         Meraki <span className="text-(--color-primary)">AI Labs</span>
       </span>
@@ -73,7 +73,7 @@ function SiteNavbar() {
           </Link>
           <Link
             to="/contact"
-            className="rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-indigo-500"
+            className="rounded-lg bg-(--color-primary) px-4 py-2 text-sm font-semibold text-(--color-primary-foreground) shadow-sm transition-colors hover:bg-emerald-700"
           >
             Apply Now
           </Link>
@@ -194,7 +194,9 @@ export default function SiteLayout() {
     <div className="flex min-h-dvh flex-col bg-(--color-background)">
       <SiteNavbar />
       <main className="flex-1">
-        <Outlet />
+        <React.Suspense fallback={<PageLoader />}>
+          <Outlet />
+        </React.Suspense>
       </main>
       <SiteFooter />
     </div>

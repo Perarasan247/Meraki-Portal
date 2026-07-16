@@ -68,9 +68,42 @@ def update_batch(batch_id: str, payload: BatchUpdate, user: CurrentUser = Depend
 
 
 @router.delete("/{batch_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_batch(batch_id: str, user: CurrentUser = Depends(require_module(MODULE))):
+def delete_batch(
+    batch_id: str,
+    force: bool = False,
+    user: CurrentUser = Depends(require_module(MODULE)),
+):
+    """Delete a batch.
+
+    Nothing cascades to a batch, so anything pointing at it must be dealt with
+    first. We answer 409 so the caller can confirm, then on ``force=true``:
+      * enrolled students are UNASSIGNED (batch_id -> null). Their enrollment and
+        fee records are never deleted — that's real money data.
+      * its Batch Execution progress tracking is removed.
+    """
     client = get_scoped_client(user.access_token)
+
+    enrolled = client.table("enrollments").select("id").eq("batch_id", batch_id).execute().data
+    tracked = client.table("batch_execution").select("id").eq("batch_id", batch_id).execute().data
+
+    if (enrolled or tracked) and not force:
+        parts = []
+        if enrolled:
+            n = len(enrolled)
+            parts.append(
+                f"{n} enrolled student{'s' if n > 1 else ''} will be unassigned from it "
+                f"(their enrollment and fee records are kept)"
+            )
+        if tracked:
+            parts.append("its progress tracking in Batch Execution will be removed")
+        raise HTTPException(status.HTTP_409_CONFLICT, "This batch is in use: " + "; ".join(parts) + ".")
+
+    if enrolled:
+        client.table("enrollments").update({"batch_id": None}).eq("batch_id", batch_id).execute()
+    if tracked:
+        client.table("batch_execution").delete().eq("batch_id", batch_id).execute()
+
     result = client.table("batches").delete().eq("id", batch_id).execute()
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
-    log_audit(client, user, "delete", "batch", batch_id)
+    log_audit(client, user, "delete", "batch", batch_id, {"unassigned": len(enrolled)})

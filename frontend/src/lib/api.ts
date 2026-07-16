@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL
+const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true'
 
 class ApiError extends Error {
   status: number
@@ -11,6 +12,17 @@ class ApiError extends Error {
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  // UI-preview build: serve student routes from in-memory sample data so the
+  // portal is fully browsable with no backend. Loaded lazily so it's excluded
+  // from real builds.
+  if (DEV_BYPASS_AUTH) {
+    const method = (options.method ?? 'GET').toUpperCase()
+    const body = typeof options.body === 'string' ? JSON.parse(options.body) : undefined
+    const { handleMock, NOT_HANDLED } = await import('./mock')
+    const mocked = handleMock(method, path, body)
+    if (mocked !== NOT_HANDLED) return mocked as T
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession()
@@ -27,7 +39,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     let message = res.statusText
     try {
       const body = await res.json()
-      message = body.detail || message
+      const detail = body.detail
+      if (typeof detail === 'string') {
+        message = detail
+      } else if (Array.isArray(detail)) {
+        // FastAPI 422: [{ loc, msg, type }, …] — surface the human-readable msg.
+        message = detail.map((d) => d?.msg ?? JSON.stringify(d)).join(', ') || message
+      } else if (detail) {
+        message = typeof detail === 'object' ? JSON.stringify(detail) : String(detail)
+      }
     } catch {
       // response had no JSON body
     }

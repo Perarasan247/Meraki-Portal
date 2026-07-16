@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
+import { MerakiLogo } from '@/components/MerakiLogo'
 import { MODULE_META, type ModuleKey } from '@/lib/types'
 
 const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -14,7 +15,7 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 
 const NAV_ORDER: ModuleKey[] = [
   'dashboard', 'enquiry', 'enrollment', 'batch_management', 'batch_execution',
-  'curriculum', 'expense', 'user_management', 'my_account',
+  'curriculum', 'expense', 'student_management', 'user_management', 'my_account',
 ]
 
 interface SidebarProps {
@@ -27,11 +28,16 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   if (!profile) return null
 
   const isSuperAdmin = profile.role === 'super_admin'
+  const isTrainer = profile.role === 'trainer'
   const visibleModules = NAV_ORDER.filter((m) => {
     if (m === 'my_account') return true
+    if (isSuperAdmin) return true
+    // Trainers see only the modules explicitly granted to them (no dashboard).
+    if (isTrainer) return profile.modules.includes(m)
     if (m === 'dashboard') return true
-    if (m === 'user_management') return isSuperAdmin || profile.role === 'branch_admin'
-    return isSuperAdmin || profile.modules.includes(m)
+    if (m === 'user_management') return profile.role === 'branch_admin'
+    if (m === 'student_management') return profile.role === 'branch_admin'
+    return profile.modules.includes(m)
   })
 
   return (
@@ -47,9 +53,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       >
         <div className="flex h-16 items-center justify-between border-b border-(--color-border) px-5">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-(--color-primary) text-(--color-primary-foreground)">
-              <Sparkles className="h-4 w-4" />
-            </div>
+            <MerakiLogo className="h-7 w-auto" />
             <span className="font-display text-base font-bold text-(--color-foreground)">Meraki</span>
           </div>
           <button onClick={onClose} className="cursor-pointer rounded-md p-1 hover:bg-(--color-muted) lg:hidden">
@@ -68,15 +72,22 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
                 onClick={onClose}
                 className={({ isActive }) =>
                   cn(
-                    'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-(--color-sidebar-foreground) transition-colors',
+                    'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
                     isActive
-                      ? 'bg-(--color-sidebar-active) text-(--color-primary)'
-                      : 'hover:bg-(--color-muted)',
+                      ? 'bg-(--color-sidebar-active) font-semibold text-(--color-primary)'
+                      : 'text-(--color-sidebar-foreground) hover:bg-(--color-muted) hover:text-(--color-foreground)',
                   )
                 }
               >
-                <Icon className="h-4.5 w-4.5" />
-                {meta.label}
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <span className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-(--color-primary)" aria-hidden />
+                    )}
+                    <Icon className="h-4.5 w-4.5 shrink-0" />
+                    {meta.label}
+                  </>
+                )}
               </NavLink>
             )
           })}

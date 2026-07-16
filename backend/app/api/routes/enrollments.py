@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import CurrentUser, require_module
+from app.core.pagination import ilike_or, paginate
 from app.core.scoping import apply_branch_filter, log_audit, resolve_branch_id
 from app.core.supabase_client import get_scoped_client
 from app.models.enrollment import (
@@ -9,6 +10,7 @@ from app.models.enrollment import (
     EnrollmentUpdate,
     PaymentRequest,
 )
+from app.models.pagination import Page
 from app.services.excel_export import export_rows_to_xlsx
 
 router = APIRouter(prefix="/enrollments", tags=["enrollments"])
@@ -23,22 +25,29 @@ def _fee_status(total: float, paid: float) -> str:
     return "Partial"
 
 
-@router.get("", response_model=list[EnrollmentOut])
+@router.get("", response_model=None)
 def list_enrollments(
     branch_id: str | None = None,
     fee_status: str | None = None,
     program: str | None = None,
+    search: str | None = None,
+    page: int | None = None,
+    page_size: int = 25,
     user: CurrentUser = Depends(require_module(MODULE)),
-):
+) -> list[dict] | Page:
     client = get_scoped_client(user.access_token)
     scope = resolve_branch_id(user, branch_id)
-    query = client.table("enrollments").select("*").order("created_at", desc=True)
+    query = client.table("enrollments").select("*", count="exact").order("created_at", desc=True)
     query = apply_branch_filter(query, scope)
     if fee_status:
         query = query.eq("fee_status", fee_status)
     if program:
         query = query.eq("program", program)
-    return query.execute().data
+    if search and search.strip():
+        query = query.or_(ilike_or(search, ["student_name", "mobile", "program"]))
+    if page is None:
+        return query.execute().data
+    return paginate(query, page, page_size)
 
 
 @router.get("/export")
@@ -56,7 +65,7 @@ def create_enrollment(payload: EnrollmentCreate, user: CurrentUser = Depends(req
     if not branch_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "branch_id is required")
 
-    data = payload.model_dump(exclude={"branch_id"})
+    data = payload.model_dump(exclude={"branch_id"}, mode="json")
     data["branch_id"] = branch_id
     data["fee_status"] = _fee_status(payload.total_fee, payload.paid_amount)
     row = client.table("enrollments").insert(data).execute().data[0]
@@ -69,9 +78,25 @@ def update_enrollment(
     enrollment_id: str, payload: EnrollmentUpdate, user: CurrentUser = Depends(require_module(MODULE))
 ):
     client = get_scoped_client(user.access_token)
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, mode="json")
     if not updates:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No fields to update")
+
+    # Keep fee_status consistent when the fee figures are edited.
+    if "total_fee" in updates or "paid_amount" in updates:
+        existing = (
+            client.table("enrollments")
+            .select("total_fee, paid_amount")
+            .eq("id", enrollment_id)
+            .single()
+            .execute()
+            .data
+        )
+        if existing:
+            total = float(updates.get("total_fee", existing["total_fee"]))
+            paid = float(updates.get("paid_amount", existing["paid_amount"]))
+            updates["fee_status"] = _fee_status(total, paid)
+
     result = client.table("enrollments").update(updates).eq("id", enrollment_id).execute()
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
@@ -106,6 +131,16 @@ def record_payment(
 @router.delete("/{enrollment_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_enrollment(enrollment_id: str, user: CurrentUser = Depends(require_module(MODULE))):
     client = get_scoped_client(user.access_token)
+
+    # Nothing cascades to an enrollment, so clear the two references first:
+    #  1. The source enquiry (if it was converted) — unlink it and reopen it to
+    #     "Interested", so the lead isn't left pointing at a deleted enrollment.
+    #  2. Any student record created from it — detach it (student data is kept).
+    client.table("enquiries").update(
+        {"converted_enrollment_id": None, "status": "Interested"}
+    ).eq("converted_enrollment_id", enrollment_id).execute()
+    client.table("students").update({"enrollment_id": None}).eq("enrollment_id", enrollment_id).execute()
+
     result = client.table("enrollments").delete().eq("id", enrollment_id).execute()
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")

@@ -9,6 +9,47 @@ from app.models.user import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+_ALL_MODULES = [
+    "dashboard", "enquiry", "enrollment", "batch_management", "batch_execution",
+    "curriculum", "expense", "marketing", "reports", "student_management",
+    "user_management", "my_account",
+]
+
+
+def _last_login_map() -> dict[str, str]:
+    """Real last-sign-in times tracked by Supabase Auth, keyed by user id.
+
+    ``profiles.last_login`` is never written on login (auth happens in Supabase),
+    so we read the authoritative ``auth.users.last_sign_in_at`` instead.
+    """
+    client = get_service_client()
+    logins: dict[str, str] = {}
+    try:
+        page = 1
+        while True:
+            batch = client.auth.admin.list_users(page=page, per_page=1000)
+            users = batch if isinstance(batch, list) else getattr(batch, "users", []) or []
+            if not users:
+                break
+            for u in users:
+                ts = getattr(u, "last_sign_in_at", None)
+                if ts:
+                    logins[u.id] = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+            if len(users) < 1000:
+                break
+            page += 1
+    except Exception:
+        pass  # fall back to whatever profiles.last_login holds
+    return logins
+
+
+def _with_last_login(rows: list[dict]) -> list[dict]:
+    logins = _last_login_map()
+    for r in rows:
+        if logins.get(r["id"]):
+            r["last_login"] = logins[r["id"]]
+    return rows
+
 
 @router.get("", response_model=list[UserOut])
 def list_users(branch_id: str | None = None, user: CurrentUser = Depends(get_current_user)):
@@ -17,19 +58,27 @@ def list_users(branch_id: str | None = None, user: CurrentUser = Depends(get_cur
         query = client.table("profiles").select("*")
         if branch_id:
             query = query.eq("branch_id", branch_id)
-        return query.execute().data
+        return _with_last_login(query.execute().data)
 
     if user.role == "branch_admin":
         client = get_scoped_client(user.access_token)
-        return client.table("profiles").select("*").eq("branch_id", user.branch_id).execute().data
+        rows = client.table("profiles").select("*").eq("branch_id", user.branch_id).execute().data
+        return _with_last_login(rows)
 
     raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to list users")
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 def create_user(payload: UserCreate, user: CurrentUser = Depends(require_super_admin)):
-    if payload.role != "super_admin" and not payload.branch_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "branch_id is required for this role")
+    # Only Admin (branch_admin) and Trainer accounts are creatable here; the
+    # schema already rejects other roles. Both are always scoped to a branch.
+    if payload.role not in ("branch_admin", "trainer"):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Only Admin or Trainer accounts can be created here; use the Students module for student logins",
+        )
+    if not payload.branch_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "branch_id is required")
 
     client = get_service_client()
     created = client.auth.admin.create_user(
@@ -81,8 +130,41 @@ def update_user(user_id: str, payload: UserUpdate, user: CurrentUser = Depends(g
         target = client.table("profiles").select("branch_id").eq("id", user_id).execute().data
         if not target or target[0]["branch_id"] != user.branch_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot modify users outside your branch")
+        # Role, branch and login email are super-admin territory.
+        for field in ("role", "branch_id", "email"):
+            if field in updates:
+                raise HTTPException(
+                    status.HTTP_403_FORBIDDEN, f"Only a super admin can change a user's {field}"
+                )
     else:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to update users")
+
+    service = get_service_client()
+    existing = service.table("profiles").select("role").eq("id", user_id).single().execute().data
+    if not existing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    # The super admin's role/branch may only change through the transfer flow,
+    # which keeps exactly one super admin at all times.
+    if existing["role"] == "super_admin" and ("role" in updates or "branch_id" in updates):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Cannot change the super admin's role or branch — use Transfer Super Admin.",
+        )
+
+    # Email is the login credential and lives in Supabase Auth; the profiles row
+    # only mirrors it. Update auth first so we never show an email they can't
+    # actually sign in with.
+    if "email" in updates and updates["email"]:
+        try:
+            service.auth.admin.update_user_by_id(
+                user_id, {"email": updates["email"], "email_confirm": True}
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Could not update the login email — it may already be in use by another account.",
+            ) from exc
 
     result = client.table("profiles").update(updates).eq("id", user_id).execute()
     if not result.data:
@@ -91,9 +173,68 @@ def update_user(user_id: str, payload: UserUpdate, user: CurrentUser = Depends(g
     return result.data[0]
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-def deactivate_user(user_id: str, user: CurrentUser = Depends(require_super_admin)):
+@router.post("/{user_id}/transfer-super-admin")
+def transfer_super_admin(user_id: str, user: CurrentUser = Depends(require_super_admin)):
+    """Hand over super admin to another user. The current super admin is
+    demoted to a branch admin of the promoted user's branch. There is always
+    exactly one super admin afterwards."""
+    if user_id == user.user_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "You cannot transfer super admin to yourself")
+
     client = get_service_client()
+    target = client.table("profiles").select("*").eq("id", user_id).single().execute().data
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Target user not found")
+    if target["role"] == "super_admin":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "That user is already a super admin")
+    if not target.get("is_active", True):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot transfer to a deactivated user")
+    target_branch = target.get("branch_id")
+    if not target_branch:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Target user has no branch assigned")
+
+    # Promote the target to super admin (branch-wide).
+    client.table("profiles").update(
+        {"role": "super_admin", "branch_id": None, "modules": _ALL_MODULES, "permission_level": "Full Access"}
+    ).eq("id", user_id).execute()
+
+    # Demote the current super admin to a branch admin of the promoted user's branch.
+    client.table("profiles").update(
+        {"role": "branch_admin", "branch_id": target_branch, "modules": _ALL_MODULES, "permission_level": "Full Access"}
+    ).eq("id", user.user_id).execute()
+
+    log_audit(client, user, "transfer_super_admin", "user", user_id, {"to": target.get("email")})
+    return {"ok": True, "new_super_admin_id": user_id}
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_user(
+    user_id: str,
+    hard: bool = False,
+    user: CurrentUser = Depends(require_super_admin),
+):
+    """Soft-deactivate a user (default) or permanently delete when ``hard=true``."""
+    client = get_service_client()
+    target = client.table("profiles").select("role").eq("id", user_id).single().execute().data
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if target["role"] == "super_admin":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Cannot deactivate or delete a super admin. Transfer super admin to someone else first.",
+        )
+
+    if hard:
+        # Permanent delete: remove the auth login (cascades to the profile when
+        # the FK cascades) and the profile row explicitly as a safety net.
+        try:
+            client.auth.admin.delete_user(user_id)
+        except Exception:
+            pass  # auth user may already be gone; still purge the profile
+        client.table("profiles").delete().eq("id", user_id).execute()
+        log_audit(client, user, "delete", "user", user_id)
+        return
+
     result = client.table("profiles").update({"is_active": False}).eq("id", user_id).execute()
     if not result.data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")

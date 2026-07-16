@@ -12,7 +12,7 @@ interface StatCardProps {
 }
 
 const ACCENT_CLASSES: Record<NonNullable<StatCardProps['accent']>, string> = {
-  primary: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300',
+  primary: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
   accent: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300',
   warning: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300',
   danger: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300',

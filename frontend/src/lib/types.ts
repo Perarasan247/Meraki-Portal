@@ -1,4 +1,13 @@
-export type UserRole = 'super_admin' | 'branch_admin' | 'staff' | 'custom'
+export type UserRole = 'super_admin' | 'branch_admin' | 'trainer' | 'staff' | 'custom'
+
+/** Modules a Trainer can access — a limited slice of the admin portal.
+ * (Batch Management, Batch Execution, Curriculum, Students, My Account.) */
+export const TRAINER_MODULES: ModuleKey[] = [
+  'batch_management', 'batch_execution', 'curriculum', 'student_management', 'my_account',
+]
+
+/** All logged-in identities, including students (who live outside `profiles`). */
+export type AppRole = UserRole | 'student'
 
 export type ModuleKey =
   | 'dashboard'
@@ -8,6 +17,7 @@ export type ModuleKey =
   | 'batch_execution'
   | 'curriculum'
   | 'expense'
+  | 'student_management'
   | 'user_management'
   | 'my_account'
 
@@ -36,10 +46,13 @@ export interface Enquiry {
   id: string
   branch_id: string
   student_name: string
+  email: string | null
   mobile: string
+  college: string | null
   program: string
   year_of_study: string | null
   reference_source: string | null
+  campaign_id: string | null
   status: EnquiryStatus
   notes: string | null
   created_at: string
@@ -53,9 +66,14 @@ export interface Enrollment {
   branch_id: string
   student_name: string
   mobile: string
+  email: string | null
+  college: string | null
   program: string
   year_of_study: string | null
   batch_id: string | null
+  start_date: string | null
+  end_date: string | null
+  enrollment_date: string | null
   total_fee: number
   paid_amount: number
   pending_amount: number
@@ -72,6 +90,7 @@ export interface Batch {
   batch_name: string
   program: string
   trainer: string | null
+  venue: string | null
   start_date: string | null
   end_date: string | null
   seats_total: number
@@ -82,6 +101,14 @@ export interface Batch {
 }
 
 export type CurriculumStatus = 'Draft' | 'Published'
+
+/** Paginated list envelope returned by list endpoints when `page` is sent. */
+export interface Page<T> {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+}
 
 export interface CurriculumPhase {
   id: string
@@ -94,6 +121,7 @@ export interface CurriculumPhase {
 export interface Curriculum {
   id: string
   branch_id: string
+  domain_id: string | null
   program: string
   title: string
   status: CurriculumStatus
@@ -181,6 +209,13 @@ export interface CurriculumContent {
 
 export type ExpenseStatus = 'Pending' | 'Approved'
 
+export type PaymentMethod =
+  | 'Cash' | 'UPI' | 'Debit Card' | 'Credit Card' | 'Bank Transfer' | 'Cheque' | 'Other'
+
+export const PAYMENT_METHODS: PaymentMethod[] = [
+  'Cash', 'UPI', 'Debit Card', 'Credit Card', 'Bank Transfer', 'Cheque', 'Other',
+]
+
 export interface Expense {
   id: string
   branch_id: string
@@ -188,6 +223,8 @@ export interface Expense {
   category: string
   amount: number
   vendor: string | null
+  payment_method: PaymentMethod | null
+  invoice_no: string | null
   date: string
   notes: string | null
   status: ExpenseStatus
@@ -267,6 +304,118 @@ export const MODULE_META: Record<
   batch_execution: { label: 'Batch Execution', icon: 'ListChecks', path: '/app/batch-execution' },
   curriculum: { label: 'Curriculum', icon: 'BookOpen', path: '/app/curriculum' },
   expense: { label: 'Finance', icon: 'Wallet', path: '/app/expenses' },
+  student_management: { label: 'Students', icon: 'GraduationCap', path: '/app/students' },
   user_management: { label: 'User Management', icon: 'Users', path: '/app/users' },
   my_account: { label: 'My Account', icon: 'UserCircle', path: '/app/account' },
+}
+
+// --- Students & internship domains ---
+export interface Domain {
+  id: string
+  branch_id: string
+  key: string
+  label: string
+  created_at: string
+}
+
+export interface StudentAccount {
+  id: string
+  branch_id: string
+  domain_id: string | null
+  domain_label: string | null
+  full_name: string
+  email: string
+  username: string | null
+  mobile: string | null
+  account_expiry: string | null
+  is_active: boolean
+  created_at: string
+}
+
+/** Identity returned by GET /student/me for the logged-in student. */
+export interface StudentIdentity {
+  id: string
+  full_name: string
+  email: string
+  username: string | null
+  mobile: string | null
+  branch_id: string
+  domain_id: string | null
+  domain_key: string | null
+  domain_label: string | null
+  account_expiry: string | null
+  is_active: boolean
+}
+
+export interface StudentCourseSummary {
+  id: string
+  title: string
+  program: string
+  total_lessons: number
+  completed_lessons: number
+  progress_pct: number
+}
+
+export interface StudentQuizQuestion {
+  id: string
+  quiz_id: string
+  prompt: string
+  type: QuizQuestionType
+  order_index: number
+  options: QuizOption[]
+  points: number
+}
+
+export interface StudentQuiz {
+  id: string
+  title: string
+  pass_percentage: number
+  max_attempts: number | null
+  questions: StudentQuizQuestion[]
+  attempts_used: number
+  best_score: number | null
+  passed: boolean
+}
+
+export interface StudentLesson {
+  id: string
+  title: string
+  order_index: number
+  estimated_minutes: number | null
+  blocks: LessonBlock[]
+  quiz: StudentQuiz | null
+  completed: boolean
+}
+
+export interface StudentModule {
+  id: string
+  title: string
+  description: string | null
+  order_index: number
+  lessons: StudentLesson[]
+  quiz: StudentQuiz | null
+}
+
+export interface StudentCourse {
+  id: string
+  title: string
+  program: string
+  modules: StudentModule[]
+}
+
+export interface QuizQuestionResult {
+  question_id: string
+  correct: boolean
+  correct_answer: unknown[]
+  explanation: string | null
+}
+
+export interface QuizSubmitResult {
+  score: number
+  passed: boolean
+  attempt_no: number
+  pass_percentage: number
+  max_attempts: number | null
+  attempts_used: number
+  results: QuizQuestionResult[]
 }

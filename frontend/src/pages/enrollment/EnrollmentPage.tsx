@@ -1,22 +1,30 @@
 import * as React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, TrendingDown } from 'lucide-react'
+import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, TrendingDown, Pencil, Trash2 } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
+import { useProgramOptions } from '@/hooks/usePrograms'
+import { useDebounced } from '@/hooks/useDebounced'
+import { Pagination } from '@/components/ui/pagination'
+import { BranchField } from '@/components/ui/branch-field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
 import { PageHeader } from '@/components/ui/page-header'
 import { Meter } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select } from '@/components/ui/input'
+import { MobileInput } from '@/components/ui/mobile-input'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
+import { useConfirm } from '@/components/ui/confirm'
 import { cn, formatCurrency } from '@/lib/utils'
-import type { Enrollment, FeeStatus, Batch } from '@/lib/types'
+import type { Enrollment, FeeStatus, Batch, Page } from '@/lib/types'
+
+const PAGE_SIZE = 25
 
 const FEE_STATUSES: FeeStatus[] = ['Paid', 'Partial', 'Pending']
 const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
@@ -52,6 +60,7 @@ function useBatchesForSelect() {
 export default function EnrollmentPage() {
   const [view, setView] = React.useState<'dashboard' | 'list'>('dashboard')
   const [formOpen, setFormOpen] = React.useState(false)
+  const [editing, setEditing] = React.useState<Enrollment | null>(null)
   const { data: enrollments, isLoading } = useEnrollments()
   const { data: batches } = useBatchesForSelect()
 
@@ -155,10 +164,15 @@ export default function EnrollmentPage() {
           onViewAll={() => setView('list')}
         />
       ) : (
-        <EnrollmentListView enrollments={enrollments ?? []} isLoading={isLoading} batchNameById={batchNameById} />
+        <EnrollmentListView batchNameById={batchNameById} onEdit={setEditing} />
       )}
 
-      <NewEnrollmentDialog open={formOpen} onClose={() => setFormOpen(false)} batches={batches ?? []} />
+      <EnrollmentDialog
+        open={formOpen || !!editing}
+        enrollment={editing}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        batches={batches ?? []}
+      />
     </div>
   )
 }
@@ -341,16 +355,52 @@ function FeeCell({ enrollment: e }: { enrollment: Enrollment }) {
 }
 
 function EnrollmentListView({
-  enrollments, isLoading, batchNameById,
+  batchNameById, onEdit,
 }: {
-  enrollments: Enrollment[]
-  isLoading: boolean
   batchNameById: Map<string, string>
+  onEdit: (e: Enrollment) => void
 }) {
+  const confirm = useConfirm()
+  const branchParam = useBranchQueryParam()
   const [search, setSearch] = React.useState('')
   const [feeStatusFilter, setFeeStatusFilter] = React.useState('')
+  const [page, setPage] = React.useState(1)
   const [paymentTarget, setPaymentTarget] = React.useState<Enrollment | null>(null)
   const queryClient = useQueryClient()
+
+  const debouncedSearch = useDebounced(search.trim(), 300)
+  React.useEffect(() => setPage(1), [debouncedSearch, feeStatusFilter])
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['enrollments', branchParam, 'list', page, debouncedSearch, feeStatusFilter],
+    queryFn: () => {
+      const qs = new URLSearchParams(branchParam)
+      qs.set('page', String(page))
+      qs.set('page_size', String(PAGE_SIZE))
+      if (debouncedSearch) qs.set('search', debouncedSearch)
+      if (feeStatusFilter) qs.set('fee_status', feeStatusFilter)
+      return api.get<Page<Enrollment>>(`/enrollments?${qs.toString()}`)
+    },
+    placeholderData: keepPreviousData,
+  })
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+
+  React.useEffect(() => {
+    if (page * PAGE_SIZE >= total) return
+    const next = page + 1
+    queryClient.prefetchQuery({
+      queryKey: ['enrollments', branchParam, 'list', next, debouncedSearch, feeStatusFilter],
+      queryFn: () => {
+        const qs = new URLSearchParams(branchParam)
+        qs.set('page', String(next))
+        qs.set('page_size', String(PAGE_SIZE))
+        if (debouncedSearch) qs.set('search', debouncedSearch)
+        if (feeStatusFilter) qs.set('fee_status', feeStatusFilter)
+        return api.get<Page<Enrollment>>(`/enrollments?${qs.toString()}`)
+      },
+    })
+  }, [page, total, debouncedSearch, feeStatusFilter, branchParam, queryClient])
 
   const paymentMutation = useMutation({
     mutationFn: ({ id, amount }: { id: string; amount: number }) => api.post(`/enrollments/${id}/payment`, { amount }),
@@ -362,10 +412,13 @@ function EnrollmentListView({
     onError: () => toast.error('Could not record payment'),
   })
 
-  const filtered = enrollments.filter((e) => {
-    if (feeStatusFilter && e.fee_status !== feeStatusFilter) return false
-    if (search && !`${e.student_name} ${e.mobile} ${e.program}`.toLowerCase().includes(search.toLowerCase())) return false
-    return true
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/enrollments/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] })
+      toast.success('Enrollment deleted')
+    },
+    onError: () => toast.error('Could not delete enrollment'),
   })
 
   return (
@@ -374,7 +427,7 @@ function EnrollmentListView({
         <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
           <CardTitle>Student Records</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            <Input placeholder="Search name, mobile, program…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-56" />
+            <Input placeholder="Search name, mobile, program…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full sm:w-56" />
             <Select value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="w-auto">
               <option value="">All fee statuses</option>
               {FEE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -384,7 +437,7 @@ function EnrollmentListView({
         <CardContent>
           {isLoading ? (
             <TableSkeleton rows={8} />
-          ) : filtered.length === 0 ? (
+          ) : items.length === 0 ? (
             <EmptyState icon={GraduationCap} title="No enrollments found" description="Try adjusting your search or filters." />
           ) : (
             <Table>
@@ -400,7 +453,7 @@ function EnrollmentListView({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((e) => (
+                {items.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell>
                       <p className="font-medium">{e.student_name}</p>
@@ -417,11 +470,31 @@ function EnrollmentListView({
                     </TableCell>
                     <TableCell><StatusBadge status={e.fee_status} /></TableCell>
                     <TableCell className="text-right">
-                      {e.fee_status !== 'Paid' && (
-                        <Button size="sm" variant="outline" onClick={() => setPaymentTarget(e)}>
-                          Record Payment
+                      <div className="flex items-center justify-end gap-1.5">
+                        {e.fee_status !== 'Paid' && (
+                          <Button size="sm" variant="outline" onClick={() => setPaymentTarget(e)}>
+                            Record Payment
+                          </Button>
+                        )}
+                        <Button size="sm" variant="ghost" aria-label={`Edit ${e.student_name}`} onClick={() => onEdit(e)}>
+                          <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                      )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          aria-label={`Delete ${e.student_name}`}
+                          onClick={async () => {
+                            if (await confirm({
+                              title: 'Delete enrollment?',
+                              description: <>“{e.student_name}” and their fee record will be permanently removed. This cannot be undone.</>,
+                              confirmLabel: 'Delete',
+                              tone: 'danger',
+                            })) deleteMutation.mutate(e.id)
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -430,6 +503,8 @@ function EnrollmentListView({
           )}
         </CardContent>
       </Card>
+
+      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
 
       <RecordPaymentDialog
         enrollment={paymentTarget}
@@ -458,8 +533,20 @@ function RecordPaymentDialog({
   if (!enrollment) return null
 
   return (
-    <Dialog open={!!enrollment} onClose={onClose} title="Record Payment" description={`${enrollment.student_name} — pending ${formatCurrency(enrollment.pending_amount)}`}>
+    <Dialog
+      open={!!enrollment}
+      onClose={onClose}
+      title="Record Payment"
+      description={`${enrollment.student_name} — pending ${formatCurrency(enrollment.pending_amount)}`}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="payment-form" loading={loading}>Record Payment</Button>
+        </>
+      }
+    >
       <form
+        id="payment-form"
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
@@ -484,62 +571,128 @@ function RecordPaymentDialog({
           <Label htmlFor="amount">Amount *</Label>
           <Input id="amount" required type="number" min={0.01} step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} />
         </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={loading}>Record Payment</Button>
-        </div>
       </form>
     </Dialog>
   )
 }
 
-function NewEnrollmentDialog({ open, onClose, batches }: { open: boolean; onClose: () => void; batches: Batch[] }) {
-  const queryClient = useQueryClient()
-  const [form, setForm] = React.useState({
-    student_name: '', mobile: '', program: '', year_of_study: '', batch_id: '', total_fee: '', paid_amount: '',
-  })
+/** A blank New Enrollment form — Enrollment Date defaults to today. */
+const blankEnrollment = () => ({
+  student_name: '', mobile: '', email: '', college: '', program: '', year_of_study: '',
+  batch_id: '', start_date: '', end_date: '',
+  enrollment_date: new Date().toISOString().slice(0, 10),
+  total_fee: '', paid_amount: '', branch_id: '',
+})
 
-  const createMutation = useMutation({
-    mutationFn: () =>
-      api.post('/enrollments', {
-        ...form,
+function EnrollmentDialog({ open, onClose, batches, enrollment }: { open: boolean; onClose: () => void; batches: Batch[]; enrollment?: Enrollment | null }) {
+  const queryClient = useQueryClient()
+  const programs = useProgramOptions(open)
+  const [form, setForm] = React.useState(blankEnrollment)
+
+  // Prefill when editing; reset when creating. Paid amount is only set at
+  // creation — afterwards it's managed via Record Payment.
+  React.useEffect(() => {
+    if (!open) return
+    setForm({
+      student_name: enrollment?.student_name ?? '',
+      mobile: enrollment?.mobile ?? '',
+      email: enrollment?.email ?? '',
+      college: enrollment?.college ?? '',
+      program: enrollment?.program ?? '',
+      year_of_study: enrollment?.year_of_study ?? '',
+      batch_id: enrollment?.batch_id ?? '',
+      start_date: enrollment?.start_date ?? '',
+      end_date: enrollment?.end_date ?? '',
+      // New enrollments default to today.
+      enrollment_date: enrollment?.enrollment_date ?? new Date().toISOString().slice(0, 10),
+      total_fee: enrollment?.total_fee != null ? String(enrollment.total_fee) : '',
+      paid_amount: enrollment?.paid_amount != null ? String(enrollment.paid_amount) : '',
+      branch_id: enrollment?.branch_id ?? '',
+    })
+  }, [open, enrollment])
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const base = {
+        student_name: form.student_name,
+        mobile: form.mobile,
+        email: form.email.trim() || null,
+        college: form.college.trim() || null,
+        program: form.program,
+        year_of_study: form.year_of_study || null,
         batch_id: form.batch_id || null,
+        start_date: form.start_date || null,
+        end_date: form.end_date || null,
+        enrollment_date: form.enrollment_date || null,
         total_fee: Number(form.total_fee) || 0,
-        paid_amount: Number(form.paid_amount) || 0,
-      }),
+        branch_id: form.branch_id || undefined,
+      }
+      return enrollment
+        ? api.patch(`/enrollments/${enrollment.id}`, base)
+        : api.post('/enrollments', { ...base, paid_amount: Number(form.paid_amount) || 0 })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['enrollments'] })
-      toast.success('Enrollment created')
-      setForm({ student_name: '', mobile: '', program: '', year_of_study: '', batch_id: '', total_fee: '', paid_amount: '' })
+      toast.success(enrollment ? 'Enrollment updated' : 'Enrollment created')
       onClose()
     },
-    onError: () => toast.error('Could not create enrollment'),
+    onError: () => toast.error(enrollment ? 'Could not update enrollment' : 'Could not create enrollment'),
   })
 
   return (
-    <Dialog open={open} onClose={onClose} title="New Enrollment" description="Enroll a new student.">
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={enrollment ? 'Edit Enrollment' : 'New Enrollment'}
+      description={enrollment ? 'Update the enrollment details.' : 'Enroll a new student.'}
+      className="max-w-3xl"
+      footer={
+        <>
+          {!enrollment && (
+            <Button type="button" variant="ghost" onClick={() => setForm(blankEnrollment())}>Clear</Button>
+          )}
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" form="enrollment-form" loading={saveMutation.isPending}>
+            {enrollment ? 'Save changes' : 'Create Enrollment'}
+          </Button>
+        </>
+      }
+    >
       <form
+        id="enrollment-form"
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
-          createMutation.mutate()
+          saveMutation.mutate()
         }}
       >
-        <div>
-          <Label htmlFor="student_name">Student Name *</Label>
-          <Input id="student_name" required value={form.student_name} onChange={(e) => setForm({ ...form, student_name: e.target.value })} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="student_name">Student Name *</Label>
+            <Input id="student_name" required value={form.student_name} onChange={(e) => setForm({ ...form, student_name: e.target.value })} placeholder="Full name" />
+          </div>
           <div>
             <Label htmlFor="mobile">Mobile *</Label>
-            <Input id="mobile" required type="tel" minLength={7} value={form.mobile} onChange={(e) => setForm({ ...form, mobile: e.target.value })} />
+            <MobileInput id="mobile" required minLength={10} value={form.mobile} onValueChange={(v) => setForm({ ...form, mobile: v })} />
+          </div>
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" />
+          </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="college">College / Institution</Label>
+            <Input id="college" value={form.college} onChange={(e) => setForm({ ...form, college: e.target.value })} placeholder="College name" />
           </div>
           <div>
             <Label htmlFor="program">Program *</Label>
-            <Input id="program" required value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })} placeholder="e.g. Robotics" />
+            <Select id="program" required value={form.program} onChange={(e) => setForm({ ...form, program: e.target.value })}>
+              <option value="">Select program</option>
+              {programs.map((p) => <option key={p} value={p}>{p}</option>)}
+            </Select>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="year">Year of Study</Label>
             <Select id="year" value={form.year_of_study} onChange={(e) => setForm({ ...form, year_of_study: e.target.value })}>
@@ -547,6 +700,9 @@ function NewEnrollmentDialog({ open, onClose, batches }: { open: boolean; onClos
               {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
             </Select>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="batch">Batch</Label>
             <Select id="batch" value={form.batch_id} onChange={(e) => setForm({ ...form, batch_id: e.target.value })}>
@@ -554,21 +710,42 @@ function NewEnrollmentDialog({ open, onClose, batches }: { open: boolean; onClos
               {batches.map((b) => <option key={b.id} value={b.id}>{b.batch_name}</option>)}
             </Select>
           </div>
+          <div>
+            <Label htmlFor="enrollment_date">Enrollment Date</Label>
+            <Input id="enrollment_date" type="date" value={form.enrollment_date} onChange={(e) => setForm({ ...form, enrollment_date: e.target.value })} />
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="start_date">Start Date</Label>
+            <Input id="start_date" type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+          </div>
+          <div>
+            <Label htmlFor="end_date">End Date</Label>
+            <Input id="end_date" type="date" min={form.start_date || undefined} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+          </div>
+        </div>
+        {enrollment ? (
           <div>
             <Label htmlFor="total_fee">Total Fee</Label>
             <Input id="total_fee" type="number" min={0} step="0.01" value={form.total_fee} onChange={(e) => setForm({ ...form, total_fee: e.target.value })} />
+            <p className="mt-1 text-xs text-(--color-muted-foreground)">Paid amount is managed via <span className="font-medium">Record Payment</span>.</p>
           </div>
-          <div>
-            <Label htmlFor="paid_amount">Paid Amount</Label>
-            <Input id="paid_amount" type="number" min={0} step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="total_fee">Total Fee</Label>
+              <Input id="total_fee" type="number" min={0} step="0.01" value={form.total_fee} onChange={(e) => setForm({ ...form, total_fee: e.target.value })} />
+            </div>
+            <div>
+              <Label htmlFor="paid_amount">Paid Amount</Label>
+              <Input id="paid_amount" type="number" min={0} step="0.01" value={form.paid_amount} onChange={(e) => setForm({ ...form, paid_amount: e.target.value })} />
+            </div>
           </div>
-        </div>
-        <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={createMutation.isPending}>Create Enrollment</Button>
-        </div>
+        )}
+
+        {!enrollment && <BranchField value={form.branch_id} onChange={(v) => setForm({ ...form, branch_id: v })} />}
       </form>
     </Dialog>
   )

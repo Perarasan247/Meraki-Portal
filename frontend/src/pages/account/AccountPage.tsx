@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { UserCircle, Download, Upload, DatabaseBackup, ShieldCheck } from 'lucide-react'
-import { api } from '@/lib/api'
+import { UserCircle, Download, Upload, DatabaseBackup, ShieldCheck, AlertTriangle } from 'lucide-react'
+import { api, ApiError } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,15 +10,18 @@ import { StatCard } from '@/components/ui/stat-card'
 import { StatCardSkeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Select } from '@/components/ui/input'
+import { Dialog } from '@/components/ui/dialog'
 import { cn, formatDate } from '@/lib/utils'
 import { MODULE_META } from '@/lib/types'
-import type { BackupCounts, RestoreResult, Profile, UserRole, ModuleKey } from '@/lib/types'
+import type { BackupCounts, RestoreResult, Profile, UserRole, ModuleKey, ManagedUser } from '@/lib/types'
 
 const ROLE_VARIANT: Record<UserRole, React.ComponentProps<typeof Badge>['variant']> = {
   super_admin: 'primary',
   branch_admin: 'info',
+  trainer: 'warning',
   staff: 'success',
-  custom: 'warning',
+  custom: 'default',
 }
 
 function initials(name?: string | null): string {
@@ -124,9 +127,93 @@ export default function AccountPage() {
         </CardContent>
       </Card>
 
+      {profile?.role === 'super_admin' && <TransferSuperAdminSection />}
+
       <BackupSection />
       <RestoreSection />
     </div>
+  )
+}
+
+function TransferSuperAdminSection() {
+  const { signOut } = useAuth()
+  const [targetId, setTargetId] = React.useState('')
+  const [confirmOpen, setConfirmOpen] = React.useState(false)
+
+  const { data: users } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => api.get<ManagedUser[]>('/users'),
+  })
+  const eligible = (users ?? []).filter((u) => u.is_active && u.role !== 'super_admin')
+  const target = eligible.find((u) => u.id === targetId) ?? null
+
+  const transfer = useMutation({
+    mutationFn: () => api.post(`/users/${targetId}/transfer-super-admin`),
+    onSuccess: async () => {
+      setConfirmOpen(false)
+      toast.success('Super admin transferred — signing you out…')
+      // Force a fresh token so the demotion (branch admin) takes effect.
+      setTimeout(() => { void signOut() }, 800)
+    },
+    onError: (e) => toast.error(e instanceof ApiError ? e.message : 'Could not transfer super admin'),
+  })
+
+  return (
+    <Card className="border-amber-300 dark:border-amber-500/40">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+          <AlertTriangle className="h-4 w-4" /> Transfer Super Admin
+        </CardTitle>
+        <CardDescription>
+          Hand over super admin to another user. <span className="font-medium text-(--color-foreground)">You will
+          become a normal (branch) admin</span> and lose super admin access.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div>
+          <label htmlFor="transfer-target" className="mb-1.5 block text-sm font-medium">Promote this user to Super Admin</label>
+          <Select id="transfer-target" value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+            <option value="">Select a user…</option>
+            {eligible.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.full_name} · {u.email} ({u.role.replace('_', ' ')})
+              </option>
+            ))}
+          </Select>
+          {eligible.length === 0 && (
+            <p className="mt-1 text-xs text-(--color-muted-foreground)">
+              No eligible users. Create a branch admin first, then transfer.
+            </p>
+          )}
+        </div>
+        <Button variant="destructive" disabled={!targetId} onClick={() => setConfirmOpen(true)}>
+          <AlertTriangle className="h-4 w-4" /> Transfer Super Admin
+        </Button>
+      </CardContent>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Transfer Super Admin?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)}>Cancel</Button>
+            <Button variant="destructive" loading={transfer.isPending} onClick={() => transfer.mutate()}>
+              Yes, transfer &amp; step down
+            </Button>
+          </>
+        }
+      >
+        <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="text-(--color-foreground)">
+            If you give Super Admin to <span className="font-semibold">{target?.full_name ?? 'this user'}</span>, you
+            will <span className="font-semibold">lose your Super Admin status and become a normal (branch) admin</span>.
+            You’ll be signed out and must log back in. Only the new Super Admin can undo this.
+          </p>
+        </div>
+      </Dialog>
+    </Card>
   )
 }
 

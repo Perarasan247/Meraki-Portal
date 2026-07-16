@@ -5,7 +5,7 @@
 -- Plus student-side progress tables (schema ready; student website is future).
 --
 -- Branch scoping: every LMS table denormalizes branch_id so the existing
--- RLS branch pattern (auth.jwt_branch_id()) applies uniformly.
+-- RLS branch pattern (public.jwt_branch_id()) applies uniformly.
 -- Legacy curricula.phases column is left intact for backward compatibility.
 
 -- ---------------------------------------------------------------------------
@@ -150,61 +150,61 @@ alter table student_module_completion enable row level security;
 
 -- Content tables: super_admin all; branch users manage own branch; students read published.
 create policy curriculum_modules_super_admin_all on curriculum_modules
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy curriculum_modules_branch_all on curriculum_modules
-  for all using (branch_id = auth.jwt_branch_id()) with check (branch_id = auth.jwt_branch_id());
+  for all using (branch_id = public.jwt_branch_id()) with check (branch_id = public.jwt_branch_id());
 create policy curriculum_modules_student_read on curriculum_modules
-  for select using (auth.jwt_role() = 'student' and is_published and branch_id = auth.jwt_branch_id());
+  for select using (public.jwt_role() = 'student' and is_published and branch_id = public.jwt_branch_id());
 
 create policy lessons_super_admin_all on lessons
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy lessons_branch_all on lessons
-  for all using (branch_id = auth.jwt_branch_id()) with check (branch_id = auth.jwt_branch_id());
+  for all using (branch_id = public.jwt_branch_id()) with check (branch_id = public.jwt_branch_id());
 create policy lessons_student_read on lessons
-  for select using (auth.jwt_role() = 'student' and is_published and branch_id = auth.jwt_branch_id());
+  for select using (public.jwt_role() = 'student' and is_published and branch_id = public.jwt_branch_id());
 
 create policy lesson_blocks_super_admin_all on lesson_blocks
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy lesson_blocks_branch_all on lesson_blocks
-  for all using (branch_id = auth.jwt_branch_id()) with check (branch_id = auth.jwt_branch_id());
+  for all using (branch_id = public.jwt_branch_id()) with check (branch_id = public.jwt_branch_id());
 create policy lesson_blocks_student_read on lesson_blocks
-  for select using (auth.jwt_role() = 'student' and branch_id = auth.jwt_branch_id());
+  for select using (public.jwt_role() = 'student' and branch_id = public.jwt_branch_id());
 
 create policy quizzes_super_admin_all on quizzes
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy quizzes_branch_all on quizzes
-  for all using (branch_id = auth.jwt_branch_id()) with check (branch_id = auth.jwt_branch_id());
+  for all using (branch_id = public.jwt_branch_id()) with check (branch_id = public.jwt_branch_id());
 create policy quizzes_student_read on quizzes
-  for select using (auth.jwt_role() = 'student' and branch_id = auth.jwt_branch_id());
+  for select using (public.jwt_role() = 'student' and branch_id = public.jwt_branch_id());
 
 -- Questions readable by students WITHOUT the `correct` column — enforce that in
 -- the student API layer (server-side grading), not here. Row-level read is allowed.
 create policy quiz_questions_super_admin_all on quiz_questions
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy quiz_questions_branch_all on quiz_questions
-  for all using (branch_id = auth.jwt_branch_id()) with check (branch_id = auth.jwt_branch_id());
+  for all using (branch_id = public.jwt_branch_id()) with check (branch_id = public.jwt_branch_id());
 create policy quiz_questions_student_read on quiz_questions
-  for select using (auth.jwt_role() = 'student' and branch_id = auth.jwt_branch_id());
+  for select using (public.jwt_role() = 'student' and branch_id = public.jwt_branch_id());
 
 -- Student tables: super_admin/staff read within branch; each student owns their rows.
 create policy students_super_admin_all on students
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy students_branch_read on students
-  for select using (branch_id = auth.jwt_branch_id());
+  for select using (branch_id = public.jwt_branch_id());
 create policy students_self on students
   for select using (id = auth.uid());
 
 create policy slp_super_admin_all on student_lesson_progress
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy slp_self on student_lesson_progress
   for all using (student_id = auth.uid()) with check (student_id = auth.uid());
 
 create policy sqa_super_admin_all on student_quiz_attempts
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy sqa_self on student_quiz_attempts
   for all using (student_id = auth.uid()) with check (student_id = auth.uid());
 
 create policy smc_super_admin_all on student_module_completion
-  for all using (auth.is_super_admin()) with check (auth.is_super_admin());
+  for all using (public.is_super_admin()) with check (public.is_super_admin());
 create policy smc_self on student_module_completion
   for all using (student_id = auth.uid()) with check (student_id = auth.uid());

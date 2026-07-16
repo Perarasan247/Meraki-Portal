@@ -5,6 +5,7 @@ import { MapPin, Phone, Mail, Clock, Send, CheckCircle2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Textarea, Select } from '@/components/ui/input'
+import { MobileInput } from '@/components/ui/mobile-input'
 
 const PROGRAMS = [
   'AI / ML',
@@ -140,7 +141,11 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <Label htmlFor="mobile">Mobile number</Label>
-                    <Input id="mobile" type="tel" value={form.mobile} onChange={set('mobile')} placeholder="+91 XXXXX XXXXX" autoComplete="tel" />
+                    <MobileInput
+                      id="mobile"
+                      value={form.mobile}
+                      onValueChange={(v) => setForm((f) => ({ ...f, mobile: v }))}
+                    />
                   </div>
                 </div>
 

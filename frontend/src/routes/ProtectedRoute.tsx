@@ -4,8 +4,21 @@ import { Loader2 } from 'lucide-react'
 
 const DEV_BYPASS_AUTH = import.meta.env.VITE_DEV_BYPASS_AUTH === 'true'
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth()
+/**
+ * Gates a portal. `expect` enforces which kind of account may enter:
+ *   - 'staff'   → the admin portal (/app). Students are bounced to /learn.
+ *   - 'student' → the student portal (/learn). Staff are bounced to /app.
+ * This is the deep-link guard: it stops one portal's users from reaching the
+ * other's routes by typing the URL.
+ */
+export function ProtectedRoute({
+  children,
+  expect,
+}: {
+  children: React.ReactNode
+  expect?: 'staff' | 'student'
+}) {
+  const { session, loading, role } = useAuth()
 
   if (DEV_BYPASS_AUTH) return <>{children}</>
 
@@ -18,6 +31,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
 
   if (!session) return <Navigate to="/login" replace />
+
+  if (expect === 'student' && role !== 'student') return <Navigate to="/app" replace />
+  if (expect === 'staff' && role === 'student') return <Navigate to="/learn" replace />
 
   return <>{children}</>
 }

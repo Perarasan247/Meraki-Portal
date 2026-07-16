@@ -15,7 +15,7 @@ const SERVICES = [
     desc: 'Intelligent automation streamlining business operations and manufacturing processes, reducing manual effort and improving operational excellence.',
   },
   {
-    icon: MessageSquare, accent: '#9333ea',
+    icon: MessageSquare, accent: '#0891b2',
     title: 'AI Agent Development',
     desc: 'Intelligent AI Agents automating workflows, decision-making, customer interactions and enterprise operations using Generative & Agentic AI.',
   },
@@ -84,10 +84,10 @@ export default function ServicesPage() {
 
       {/* CTA */}
       <section className="mx-auto max-w-6xl px-4 pb-24 pt-8 sm:px-6">
-        <div className="flex flex-col items-center justify-between gap-5 rounded-3xl bg-gradient-to-br from-indigo-600 to-violet-600 px-8 py-10 text-center shadow-lg sm:flex-row sm:text-left">
+        <div className="flex flex-col items-center justify-between gap-5 rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-600 px-8 py-10 text-center shadow-lg sm:flex-row sm:text-left">
           <div>
             <div className="font-display text-xl font-bold text-white">Ready to start your journey?</div>
-            <p className="mt-1.5 text-sm text-indigo-100">
+            <p className="mt-1.5 text-sm text-emerald-100">
               Join 500+ students who have already transformed their careers.
             </p>
           </div>
