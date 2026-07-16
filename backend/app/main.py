@@ -37,9 +37,9 @@ _allowed_origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    # Always allow this project's Vercel deployments (production + preview URLs),
-    # so testing works regardless of the exact FRONTEND_ORIGIN value.
-    allow_origin_regex=r"https://meraki-portal[\w-]*\.vercel\.app",
+    # Always allow any Vercel deployment (production + preview URLs) so testing
+    # works regardless of the exact FRONTEND_ORIGIN value.
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
