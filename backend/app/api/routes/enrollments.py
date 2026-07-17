@@ -25,24 +25,45 @@ def _fee_status(total: float, paid: float) -> str:
     return "Partial"
 
 
+# Columns the list view may sort by. Whitelisted so a bad/injected value can't
+# reach the database. `batch_id` is deliberately absent — it's a UUID, and the
+# readable batch name is resolved client-side, so ordering by it is meaningless.
+_SORTABLE = {"student_name", "program", "pending_amount", "fee_status", "created_at"}
+
+
 @router.get("", response_model=None)
 def list_enrollments(
     branch_id: str | None = None,
     fee_status: str | None = None,
     program: str | None = None,
+    year_of_study: str | None = None,
+    batch_id: str | None = None,
     search: str | None = None,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
     page: int | None = None,
     page_size: int = 25,
     user: CurrentUser = Depends(require_module(MODULE)),
 ) -> list[dict] | Page:
+    """Sorting is applied in the database so it orders the whole result set,
+    not just the rows on the current page."""
     client = get_scoped_client(user.access_token)
     scope = resolve_branch_id(user, branch_id)
-    query = client.table("enrollments").select("*", count="exact").order("created_at", desc=True)
+    order_col = sort_by if sort_by in _SORTABLE else "created_at"
+    query = (
+        client.table("enrollments")
+        .select("*", count="exact")
+        .order(order_col, desc=(sort_dir != "asc"))
+    )
     query = apply_branch_filter(query, scope)
     if fee_status:
         query = query.eq("fee_status", fee_status)
     if program:
         query = query.eq("program", program)
+    if year_of_study:
+        query = query.eq("year_of_study", year_of_study)
+    if batch_id:
+        query = query.eq("batch_id", batch_id)
     if search and search.strip():
         query = query.or_(ilike_or(search, ["student_name", "mobile", "program"]))
     if page is None:

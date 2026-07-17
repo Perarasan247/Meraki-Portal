@@ -1,26 +1,35 @@
 import * as React from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, CalendarRange, ArrowRight, Pencil, Trash2, AlertTriangle } from 'lucide-react'
+import { Download, Plus, CalendarRange, ArrowRight, Pencil, Trash2, AlertTriangle, X } from 'lucide-react'
 import { api, downloadExport, ApiError } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
 import { useProgramOptions } from '@/hooks/usePrograms'
-import { Card, CardContent } from '@/components/ui/card'
+import { useDebounced } from '@/hooks/useDebounced'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select } from '@/components/ui/input'
 import { StatusBadge, Badge } from '@/components/ui/badge'
 import { Meter } from '@/components/ui/progress'
 import { PageHeader } from '@/components/ui/page-header'
 import { EmptyState } from '@/components/ui/empty-state'
-import { Skeleton } from '@/components/ui/skeleton'
+import { Skeleton, TableSkeleton } from '@/components/ui/skeleton'
 import { Dialog } from '@/components/ui/dialog'
 import { useConfirm } from '@/components/ui/confirm'
 import { BranchField } from '@/components/ui/branch-field'
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  SortableHead, type SortState,
+} from '@/components/ui/table'
+import { Pagination } from '@/components/ui/pagination'
+import { ViewBatchDialog } from './ViewBatchDialog'
 import { cn, formatDate } from '@/lib/utils'
-import type { Batch, BatchMode, BatchStatus } from '@/lib/types'
+import type { Batch, BatchMode, BatchScope, BatchStatus, Page } from '@/lib/types'
 
 const MODES: BatchMode[] = ['Online', 'Offline', 'Hybrid']
 const STATUSES: BatchStatus[] = ['Upcoming', 'Active', 'Completed']
+const SCOPES: BatchScope[] = ['Training', 'Internship', 'Project']
+const DEFAULT_PAGE_SIZE = 5
 
 const STATUS_DOT: Record<BatchStatus, string> = {
   Upcoming: 'bg-cyan-500',
@@ -44,10 +53,12 @@ function useBatches() {
 }
 
 export default function BatchesPage() {
+  const [view, setView] = React.useState<'cards' | 'list'>('cards')
   const [formOpen, setFormOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Batch | null>(null)
   const [search, setSearch] = React.useState('')
   const [programFilter, setProgramFilter] = React.useState('')
+  const [scopeFilter, setScopeFilter] = React.useState('')
   const [modeFilter, setModeFilter] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('')
   const { data: batches, isLoading } = useBatches()
@@ -75,6 +86,7 @@ export default function BatchesPage() {
 
   const filtered = (batches ?? []).filter((b) => {
     if (programFilter && b.program !== programFilter) return false
+    if (scopeFilter && b.scope !== scopeFilter) return false
     if (modeFilter && b.mode !== modeFilter) return false
     if (statusFilter && b.status !== statusFilter) return false
     if (search && !`${b.batch_name} ${b.program} ${b.trainer ?? ''}`.toLowerCase().includes(search.toLowerCase())) return false
@@ -107,75 +119,102 @@ export default function BatchesPage() {
         }
       />
 
-      {/* Status summary chips */}
-      <div className="flex flex-wrap items-center gap-2">
-        {STATUSES.map((s) => (
-          <span
-            key={s}
-            className="inline-flex items-center gap-2 rounded-full border border-(--color-border) bg-(--color-card) px-3 py-1.5 text-sm"
-          >
-            <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[s])} />
-            <span className="text-(--color-muted-foreground)">{s}</span>
-            <span className="font-display font-semibold tabular-nums text-(--color-foreground)">
-              {s === 'Upcoming' ? stats.upcoming : s === 'Active' ? stats.active : stats.completed}
+      {/* Status summary chips + view toggle */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          {STATUSES.map((s) => (
+            <span
+              key={s}
+              className="inline-flex items-center gap-2 rounded-full border border-(--color-border) bg-(--color-card) px-3 py-1.5 text-sm"
+            >
+              <span className={cn('h-2 w-2 rounded-full', STATUS_DOT[s])} />
+              <span className="text-(--color-muted-foreground)">{s}</span>
+              <span className="font-display font-semibold tabular-nums text-(--color-foreground)">
+                {s === 'Upcoming' ? stats.upcoming : s === 'Active' ? stats.active : stats.completed}
+              </span>
             </span>
-          </span>
-        ))}
+          ))}
+        </div>
+        <div className="flex rounded-lg border border-(--color-border) p-1">
+          {(['cards', 'list'] as const).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={cn(
+                'cursor-pointer rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors',
+                view === v
+                  ? 'bg-(--color-primary) text-(--color-primary-foreground)'
+                  : 'text-(--color-muted-foreground) hover:bg-(--color-muted)',
+              )}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-2 py-4">
-          <Input
-            placeholder="Search batch, program, trainer…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full sm:w-64"
-          />
-          <Select value={programFilter} onChange={(e) => setProgramFilter(e.target.value)} className="w-auto">
-            <option value="">All programs</option>
-            {programOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-          </Select>
-          <Select value={modeFilter} onChange={(e) => setModeFilter(e.target.value)} className="w-auto">
-            <option value="">All modes</option>
-            {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
-          </Select>
-          <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
-        </CardContent>
-      </Card>
+      {view === 'cards' ? (
+        <>
+          {/* Filters (cards view filters the loaded set client-side) */}
+          <Card>
+            <CardContent className="flex flex-wrap items-center gap-2 py-4">
+              <Input
+                placeholder="Search batch, program, trainer…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="min-w-56 flex-1"
+              />
+              <Select aria-label="Filter by program" value={programFilter} onChange={(e) => setProgramFilter(e.target.value)} className="w-auto max-w-44">
+                <option value="">All programs</option>
+                {programOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+              </Select>
+              <Select aria-label="Filter by scope" value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)} className="w-auto max-w-44">
+                <option value="">All scopes</option>
+                {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+              <Select aria-label="Filter by mode" value={modeFilter} onChange={(e) => setModeFilter(e.target.value)} className="w-auto max-w-44">
+                <option value="">All modes</option>
+                {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+              </Select>
+              <Select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto max-w-44">
+                <option value="">All status</option>
+                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </CardContent>
+          </Card>
 
-      {/* Card grid */}
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="rounded-(--radius-card) border border-(--color-border) bg-(--color-card) p-5">
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="mt-3 h-4 w-1/2" />
-              <Skeleton className="mt-4 h-2.5 w-full" />
-              <Skeleton className="mt-4 h-4 w-3/4" />
+          {isLoading ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-(--radius-card) border border-(--color-border) bg-(--color-card) p-5">
+                  <Skeleton className="h-5 w-2/3" />
+                  <Skeleton className="mt-3 h-4 w-1/2" />
+                  <Skeleton className="mt-4 h-2.5 w-full" />
+                  <Skeleton className="mt-4 h-4 w-3/4" />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : filtered.length === 0 ? (
-        <EmptyState
-          icon={CalendarRange}
-          title="No batches found"
-          description="Try adjusting your search or filters, or create a new batch."
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((b) => (
-            <BatchCard
-              key={b.id}
-              batch={b}
-              onStatusChange={(status) => updateStatus.mutate({ id: b.id, status })}
-              onEdit={() => setEditing(b)}
+          ) : filtered.length === 0 ? (
+            <EmptyState
+              icon={CalendarRange}
+              title="No batches found"
+              description="Try adjusting your search or filters, or create a new batch."
             />
-          ))}
-        </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {filtered.map((b) => (
+                <BatchCard
+                  key={b.id}
+                  batch={b}
+                  onStatusChange={(status) => updateStatus.mutate({ id: b.id, status })}
+                  onEdit={() => setEditing(b)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <BatchListView onEdit={setEditing} />
       )}
 
       <BatchDialog
@@ -184,6 +223,235 @@ export default function BatchesPage() {
         onClose={() => { setFormOpen(false); setEditing(null) }}
       />
     </div>
+  )
+}
+
+/**
+ * Table view: search, sort and paginate on the server, so it stays correct as
+ * the batch count grows rather than filtering whatever happened to load.
+ */
+function BatchListView({ onEdit }: { onEdit: (b: Batch) => void }) {
+  const confirm = useConfirm()
+  const branchParam = useBranchQueryParam()
+  const queryClient = useQueryClient()
+  const [search, setSearch] = React.useState('')
+  const [programFilter, setProgramFilter] = React.useState('')
+  const [scopeFilter, setScopeFilter] = React.useState('')
+  const [modeFilter, setModeFilter] = React.useState('')
+  const [statusFilter, setStatusFilter] = React.useState('')
+  const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(DEFAULT_PAGE_SIZE)
+  const [sort, setSort] = React.useState<SortState>({ by: 'created_at', dir: 'desc' })
+  const [viewing, setViewing] = React.useState<Batch | null>(null)
+  const debouncedSearch = useDebounced(search.trim(), 300)
+  const programs = useProgramOptions()
+  const hasFilters = !!(search || programFilter || scopeFilter || modeFilter || statusFilter)
+  // Any change to what's being listed sends you back to page 1.
+  React.useEffect(
+    () => setPage(1),
+    [debouncedSearch, programFilter, scopeFilter, modeFilter, statusFilter, pageSize, sort],
+  )
+
+  // One builder for both the query and the prefetch, so they can't drift apart.
+  const listKey = React.useCallback(
+    (p: number) => ['batches', branchParam, 'list', p, pageSize, debouncedSearch, programFilter, scopeFilter, modeFilter, statusFilter, sort.by, sort.dir],
+    [branchParam, pageSize, debouncedSearch, programFilter, scopeFilter, modeFilter, statusFilter, sort],
+  )
+  const fetchPage = React.useCallback(
+    (p: number) => {
+      const qs = new URLSearchParams(branchParam)
+      qs.set('page', String(p))
+      qs.set('page_size', String(pageSize))
+      qs.set('sort_by', sort.by)
+      qs.set('sort_dir', sort.dir)
+      if (debouncedSearch) qs.set('search', debouncedSearch)
+      if (programFilter) qs.set('program', programFilter)
+      if (scopeFilter) qs.set('scope_filter', scopeFilter)
+      if (modeFilter) qs.set('mode', modeFilter)
+      if (statusFilter) qs.set('status_filter', statusFilter)
+      return api.get<Page<Batch>>(`/batches?${qs.toString()}`)
+    },
+    [branchParam, pageSize, sort, debouncedSearch, programFilter, scopeFilter, modeFilter, statusFilter],
+  )
+
+  const { data, isLoading } = useQuery({
+    queryKey: listKey(page),
+    queryFn: () => fetchPage(page),
+    placeholderData: keepPreviousData,
+  })
+  const items = data?.items ?? []
+  const total = data?.total ?? 0
+
+  React.useEffect(() => {
+    if (page * pageSize >= total) return
+    queryClient.prefetchQuery({ queryKey: listKey(page + 1), queryFn: () => fetchPage(page + 1) })
+  }, [page, pageSize, total, queryClient, listKey, fetchPage])
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ id, force }: { id: string; force: boolean }) =>
+      api.delete(`/batches/${id}${force ? '?force=true' : ''}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['batches'] })
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] })
+      toast.success('Batch deleted')
+    },
+    onError: () => toast.error('Could not delete batch'),
+  })
+
+  async function handleDelete(b: Batch) {
+    const ok = await confirm({
+      title: `Delete “${b.batch_name}”?`,
+      description: 'This removes the batch. Students enrolled in it are kept and simply unassigned.',
+      confirmLabel: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
+    try {
+      await deleteMutation.mutateAsync({ id: b.id, force: false })
+    } catch (err) {
+      // 409 = students and/or progress tracking still point at this batch.
+      if (err instanceof ApiError && err.status === 409) {
+        const force = await confirm({
+          title: 'This batch is in use',
+          description: (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-(--color-foreground) dark:border-amber-500/40 dark:bg-amber-500/10">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>{err.message} Delete it anyway?</span>
+            </div>
+          ),
+          confirmLabel: 'Delete anyway',
+          tone: 'danger',
+        })
+        if (force) deleteMutation.mutate({ id: b.id, force: true })
+      }
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        {/* Title and toolbar stack, so both sit flush with the table's left edge. */}
+        <CardHeader className="gap-3">
+          <CardTitle>All Batches</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input placeholder="Search batch, program, trainer…" value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-56 flex-1" />
+            <Select aria-label="Filter by program" value={programFilter} onChange={(e) => setProgramFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All programs</option>
+              {programs.map((p) => <option key={p} value={p}>{p}</option>)}
+            </Select>
+            <Select aria-label="Filter by scope" value={scopeFilter} onChange={(e) => setScopeFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All scopes</option>
+              {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+            <Select aria-label="Filter by mode" value={modeFilter} onChange={(e) => setModeFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All modes</option>
+              {MODES.map((m) => <option key={m} value={m}>{m}</option>)}
+            </Select>
+            <Select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All status</option>
+              {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(''); setProgramFilter(''); setScopeFilter(''); setModeFilter(''); setStatusFilter('') }}
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </Button>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <TableSkeleton rows={5} />
+          ) : items.length === 0 ? (
+            <EmptyState icon={CalendarRange} title="No batches found" description="Try adjusting your search or filters." />
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableHead label="Batch" column="batch_name" sort={sort} onSort={setSort} />
+                    <TableHead>Program</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Trainer</TableHead>
+                    <SortableHead label="Starts" column="start_date" sort={sort} onSort={setSort} />
+                    <TableHead>Seats</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {items.map((b) => (
+                    <TableRow
+                      key={b.id}
+                      onClick={() => setViewing(b)}
+                      className="cursor-pointer"
+                    >
+                      <TableCell>
+                        <span className="block max-w-[10rem] truncate font-medium text-(--color-foreground)" title={b.batch_name}>
+                          {b.batch_name}
+                        </span>
+                        <span className="text-xs text-(--color-muted-foreground)">{b.mode}</span>
+                      </TableCell>
+                      <TableCell>
+                        <span className="block max-w-[10rem] truncate" title={b.program}>{b.program}</span>
+                      </TableCell>
+                      <TableCell><Badge variant="default">{b.scope}</Badge></TableCell>
+                      <TableCell>
+                        <span className="block max-w-[8rem] truncate" title={b.trainer ?? 'Unassigned'}>
+                          {b.trainer ?? <span className="text-(--color-muted-foreground)">Unassigned</span>}
+                        </span>
+                      </TableCell>
+                      <TableCell className="tabular-nums">{b.start_date ? formatDate(b.start_date) : '—'}</TableCell>
+                      <TableCell>
+                        <div className="min-w-24">
+                          <span className="text-sm tabular-nums">{b.seats_filled} / {b.seats_total}</span>
+                          <Meter
+                            value={b.seats_filled}
+                            max={b.seats_total || b.seats_filled || 1}
+                            tone={seatTone(b.seats_filled, b.seats_total)}
+                            size="sm"
+                            className="mt-1.5"
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell><StatusBadge status={b.status} /></TableCell>
+                      {/* Actions must not trigger the row's View. */}
+                      <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" variant="outline" title="Edit" aria-label={`Edit ${b.batch_name}`} onClick={() => onEdit(b)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            title="Delete"
+                            aria-label={`Delete ${b.batch_name}`}
+                            className="text-(--color-destructive) hover:bg-(--color-destructive)/10 hover:text-(--color-destructive)"
+                            onClick={() => handleDelete(b)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSizeChange={setPageSize} />
+        </CardContent>
+      </Card>
+
+      <ViewBatchDialog
+        batch={viewing}
+        onClose={() => setViewing(null)}
+        onEdit={(b) => { setViewing(null); onEdit(b) }}
+      />
+    </>
   )
 }
 
@@ -267,8 +535,9 @@ function BatchCard({ batch: b, onStatusChange, onEdit }: { batch: Batch; onStatu
 
 /** A blank New Batch form. */
 const blankBatch = () => ({
-  batch_name: '', program: '', trainer: '', venue: '', start_date: '', end_date: '',
-  seats_total: '', mode: 'Offline' as BatchMode, status: 'Upcoming' as BatchStatus, branch_id: '',
+  batch_name: '', program: '', scope: 'Internship' as BatchScope, trainer: '', venue: '',
+  start_date: '', end_date: '', seats_total: '', mode: 'Offline' as BatchMode,
+  status: 'Upcoming' as BatchStatus, branch_id: '',
 })
 
 function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => void; batch?: Batch | null }) {
@@ -283,6 +552,7 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
     setForm({
       batch_name: batch?.batch_name ?? '',
       program: batch?.program ?? '',
+      scope: batch?.scope ?? 'Internship',
       trainer: batch?.trainer ?? '',
       venue: batch?.venue ?? '',
       start_date: batch?.start_date ?? '',
@@ -324,7 +594,7 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
   })
 
   const saveMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (force: boolean) => {
       const body = {
         ...form,
         trainer: form.trainer.trim() || null,
@@ -334,14 +604,37 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
         seats_total: Number(form.seats_total) || 0,
         branch_id: form.branch_id || undefined,
       }
-      return batch ? api.patch(`/batches/${batch.id}`, body) : api.post('/batches', body)
+      return batch
+        ? api.patch(`/batches/${batch.id}${force ? '?force=true' : ''}`, body)
+        : api.post('/batches', body)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['batches'] })
+      // A branch move re-brands the enrolled students too.
+      queryClient.invalidateQueries({ queryKey: ['enrollments'] })
       toast.success(batch ? 'Batch updated' : 'Batch created')
       onClose()
     },
-    onError: () => toast.error(batch ? 'Could not update batch' : 'Could not create batch'),
+    onError: async (err) => {
+      // 409 = moving this batch to another branch takes its students with it.
+      if (err instanceof ApiError && err.status === 409) {
+        const ok = await confirm({
+          title: 'Move this batch to another branch?',
+          description: (
+            <div className="flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-(--color-foreground) dark:border-amber-500/40 dark:bg-amber-500/10">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <span>{err.message} Move it anyway?</span>
+            </div>
+          ),
+          confirmLabel: 'Move anyway',
+        })
+        if (ok) saveMutation.mutate(true)
+        return
+      }
+      toast.error(
+        err instanceof ApiError ? err.message : batch ? 'Could not update batch' : 'Could not create batch',
+      )
+    },
   })
 
   return (
@@ -386,7 +679,7 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault()
-          saveMutation.mutate()
+          saveMutation.mutate(false)
         }}
       >
         <div className="grid gap-3 sm:grid-cols-3">
@@ -402,12 +695,18 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
             </Select>
           </div>
           <div>
-            <Label htmlFor="trainer">Trainer</Label>
-            <Input id="trainer" value={form.trainer} onChange={(e) => setForm({ ...form, trainer: e.target.value })} placeholder="Trainer name" />
+            <Label htmlFor="scope">Scope</Label>
+            <Select id="scope" value={form.scope} onChange={(e) => setForm({ ...form, scope: e.target.value as BatchScope })}>
+              {SCOPES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </Select>
           </div>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-3">
+          <div>
+            <Label htmlFor="trainer">Trainer</Label>
+            <Input id="trainer" value={form.trainer} onChange={(e) => setForm({ ...form, trainer: e.target.value })} placeholder="Trainer name" />
+          </div>
           <div>
             <Label htmlFor="start_date">Start Date</Label>
             <Input id="start_date" type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
@@ -416,13 +715,13 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
             <Label htmlFor="end_date">End Date</Label>
             <Input id="end_date" type="date" min={form.start_date || undefined} value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-3">
           <div>
             <Label htmlFor="seats_total">Max Seats</Label>
             <Input id="seats_total" type="number" min={0} value={form.seats_total} onChange={(e) => setForm({ ...form, seats_total: e.target.value })} placeholder="30" />
           </div>
-        </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
           <div>
             <Label htmlFor="mode">Mode</Label>
             <Select id="mode" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as BatchMode })}>
@@ -435,6 +734,9 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
               {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
           </div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="venue">Venue / Platform</Label>
             <Input
@@ -444,9 +746,18 @@ function BatchDialog({ open, onClose, batch }: { open: boolean; onClose: () => v
               placeholder={form.mode === 'Online' ? 'Zoom / Meet link' : 'Location or online link'}
             />
           </div>
+          {/* BranchField renders nothing for branch users — they have no other
+              branch to pick. On edit this is a move, so it warns first. */}
+          <BranchField
+            value={form.branch_id}
+            onChange={(v) => setForm({ ...form, branch_id: v })}
+            hint={
+              batch && form.branch_id !== batch.branch_id
+                ? 'Enrolled students and progress tracking move with the batch.'
+                : undefined
+            }
+          />
         </div>
-
-        {!batch && <BranchField value={form.branch_id} onChange={(v) => setForm({ ...form, branch_id: v })} />}
       </form>
     </Dialog>
   )

@@ -113,7 +113,19 @@
       "Bash(cd /c/Perarasan/Meraki-Portal/frontend && npm run build 2>&1 | grep -iE \"error TS|built in\" | head -5; echo \"=== BACKEND ===\"; cd ../backend && ../.venv/Scripts/python.exe -c \"from app.main import app; print\\('backend OK'\\)\" 2>&1 | tail -2)",
       "Bash(grep -E \"\\\\.venv/|__pycache__/|\\\\.pyc$|\\\\.vscode/\")",
       "Bash(git add *)",
-      "Bash(grep -E \"\\\\.venv/|__pycache__|\\\\.pyc$\")"
+      "Bash(grep -E \"\\\\.venv/|__pycache__|\\\\.pyc$\")",
+      "Bash(git push *)",
+      "Bash(git config *)",
+      "Bash(echo \"name : $\\(git config user.name\\)\")",
+      "Bash(echo \"email: $\\(git config user.email\\)\")",
+      "Bash(git ls-remote *)",
+      "Bash(git commit *)",
+      "Bash(sed 's|src/pages/||')",
+      "Read(//c/Perarasan/backend/app/api/routes/**)",
+      "Bash(grep -nE \"aria-label=\\\\{\\\\`\\(Edit|Delete\\)|>Convert<\" src/pages/enquiry/EnquiryPage.tsx)",
+      "Bash(grep -nE \"Record Payment|aria-label=\\\\{\\\\`\\(Edit|Delete\\)\" src/pages/enrollment/EnrollmentPage.tsx)",
+      "Bash(grep -nE \">Record Payment<|aria-label=\\\\{\\\\`\\(Edit|Delete\\)\" src/pages/enrollment/EnrollmentPage.tsx)",
+      "Bash(grep -v \"^--$\")"
     ],
     "additionalDirectories": [
       "/tmp"

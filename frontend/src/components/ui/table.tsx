@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export function Table({ className, ...props }: React.TableHTMLAttributes<HTMLTableElement>) {
@@ -35,4 +36,46 @@ export function TableHead({ className, ...props }: React.ThHTMLAttributes<HTMLTa
 
 export function TableCell({ className, ...props }: React.TdHTMLAttributes<HTMLTableCellElement>) {
   return <td className={cn('px-4 py-3 align-middle', className)} {...props} />
+}
+
+export type SortDir = 'asc' | 'desc'
+export interface SortState {
+  by: string
+  dir: SortDir
+}
+
+/** Toggle a column: clicking a new column sorts it ascending; clicking the
+ *  active column flips direction. */
+export function nextSort(current: SortState, column: string): SortState {
+  if (current.by !== column) return { by: column, dir: 'asc' }
+  return { by: column, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+}
+
+/** A clickable column header that sorts by `column`. */
+export function SortableHead({
+  label, column, sort, onSort, className,
+}: {
+  label: string
+  column: string
+  sort: SortState
+  onSort: (next: SortState) => void
+  className?: string
+}) {
+  const active = sort.by === column
+  const Icon = !active ? ChevronsUpDown : sort.dir === 'asc' ? ChevronUp : ChevronDown
+  return (
+    <TableHead className={cn('p-0', className)} aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onSort(nextSort(sort, column))}
+        className={cn(
+          'flex h-10 w-full cursor-pointer items-center gap-1 px-4 text-left text-xs font-semibold uppercase tracking-wide transition-colors hover:text-(--color-foreground)',
+          active ? 'text-(--color-foreground)' : 'text-(--color-muted-foreground)',
+        )}
+      >
+        {label}
+        <Icon className={cn('h-3.5 w-3.5 shrink-0', !active && 'opacity-40')} />
+      </button>
+    </TableHead>
+  )
 }

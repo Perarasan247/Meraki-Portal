@@ -42,6 +42,9 @@ export interface Branch {
 
 export type EnquiryStatus = 'New' | 'Contacted' | 'Interested' | 'Converted'
 
+export type EnquiryType = 'Training' | 'Internship'
+export const ENQUIRY_TYPES: EnquiryType[] = ['Training', 'Internship']
+
 export interface Enquiry {
   id: string
   branch_id: string
@@ -49,6 +52,7 @@ export interface Enquiry {
   email: string | null
   mobile: string
   college: string | null
+  enquiry_type: EnquiryType
   program: string
   year_of_study: string | null
   reference_source: string | null
@@ -84,11 +88,15 @@ export interface Enrollment {
 export type BatchMode = 'Online' | 'Offline' | 'Hybrid'
 export type BatchStatus = 'Upcoming' | 'Active' | 'Completed'
 
+/** What the batch is run as. */
+export type BatchScope = 'Training' | 'Internship' | 'Project'
+
 export interface Batch {
   id: string
   branch_id: string
   batch_name: string
   program: string
+  scope: BatchScope
   trainer: string | null
   venue: string | null
   start_date: string | null
@@ -118,12 +126,16 @@ export interface CurriculumPhase {
   estimated_duration: string | null
 }
 
+/** What a curriculum is written for. Same vocabulary as `BatchScope`. */
+export type CurriculumScope = 'Training' | 'Internship' | 'Project'
+
 export interface Curriculum {
   id: string
   branch_id: string
   domain_id: string | null
   program: string
   title: string
+  scope: CurriculumScope
   status: CurriculumStatus
   phases: CurriculumPhase[]
   created_at: string

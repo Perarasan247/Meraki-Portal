@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 EnquiryStatus = Literal["New", "Contacted", "Interested", "Converted"]
+EnquiryType = Literal["Training", "Internship"]
 
 
 class EnquiryCreate(BaseModel):
@@ -11,6 +12,7 @@ class EnquiryCreate(BaseModel):
     email: str | None = None
     mobile: str = Field(min_length=7, max_length=15)
     college: str | None = None
+    enquiry_type: EnquiryType = "Internship"
     program: str = Field(min_length=1)
     year_of_study: str | None = None
     reference_source: str | None = None
@@ -25,6 +27,7 @@ class EnquiryUpdate(BaseModel):
     email: str | None = None
     mobile: str | None = None
     college: str | None = None
+    enquiry_type: EnquiryType | None = None
     program: str | None = None
     year_of_study: str | None = None
     reference_source: str | None = None
@@ -40,6 +43,7 @@ class EnquiryOut(BaseModel):
     email: str | None
     mobile: str
     college: str | None = None
+    enquiry_type: EnquiryType = "Internship"
     program: str
     year_of_study: str | None
     reference_source: str | None

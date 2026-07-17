@@ -11,6 +11,7 @@ import { Meter } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select, Textarea } from '@/components/ui/input'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { ViewExpenseDialog } from './ViewExpenseDialog'
 import { Badge, StatusBadge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
@@ -265,6 +266,7 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
   const [search, setSearch] = React.useState('')
   const [categoryFilter, setCategoryFilter] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState('')
+  const [viewing, setViewing] = React.useState<Expense | null>(null)
   const queryClient = useQueryClient()
 
   const categories = React.useMemo(() => {
@@ -301,6 +303,7 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
   const filteredTotal = filtered.reduce((sum, e) => sum + e.amount, 0)
 
   return (
+    <>
     <Card>
       <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
         <CardTitle>Ledger</CardTitle>
@@ -320,7 +323,7 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
             ))}
           </Select>
           <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-auto">
-            <option value="">All statuses</option>
+            <option value="">All status</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -349,10 +352,10 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
             </TableHeader>
             <TableBody>
               {filtered.map((e) => (
-                <TableRow key={e.id}>
+                <TableRow key={e.id} onClick={() => setViewing(e)} className="cursor-pointer">
                   <TableCell className="tabular-nums text-(--color-muted-foreground)">{formatDate(e.date)}</TableCell>
                   <TableCell className="font-medium">{e.title}</TableCell>
-                  <TableCell>
+                  <TableCell className="whitespace-nowrap">
                     <Badge>{e.category}</Badge>
                   </TableCell>
                   <TableCell className="text-(--color-muted-foreground)">{e.vendor ?? '—'}</TableCell>
@@ -360,7 +363,8 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
                   <TableCell>
                     <StatusBadge status={e.status} />
                   </TableCell>
-                  <TableCell>
+                  {/* Actions must not trigger the row's View. */}
+                  <TableCell onClick={(ev) => ev.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1.5">
                       {e.status === 'Pending' && (
                         <Button
@@ -411,6 +415,13 @@ function ExpensesListView({ expenses, isLoading, onEdit }: { expenses: Expense[]
         )}
       </CardContent>
     </Card>
+
+    <ViewExpenseDialog
+      expense={viewing}
+      onClose={() => setViewing(null)}
+      onEdit={(e) => { setViewing(null); onEdit(e) }}
+    />
+    </>
   )
 }
 

@@ -3,11 +3,22 @@ from collections import Counter
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import CurrentUser, get_current_user, require_super_admin
+from app.core.pagination import ilike_or, paginate
 from app.core.scoping import log_audit
 from app.core.supabase_client import get_scoped_client, get_service_client
+from app.models.pagination import Page
 from app.models.user import UserCreate, UserOut, UserUpdate
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+# Columns the list view may sort by. Whitelisted so a bad/injected value can't
+# reach the database — anything else falls back to registered_at.
+#
+# `last_login` is deliberately absent: the value shown comes from
+# auth.users.last_sign_in_at (see _last_login_map), while profiles.last_login is
+# never written. Ordering by that column would sort by nulls and contradict the
+# times on screen.
+_SORTABLE = {"full_name", "email", "role", "is_active", "registered_at"}
 
 _ALL_MODULES = [
     "dashboard", "enquiry", "enrollment", "batch_management", "batch_execution",
@@ -51,21 +62,54 @@ def _with_last_login(rows: list[dict]) -> list[dict]:
     return rows
 
 
-@router.get("", response_model=list[UserOut])
-def list_users(branch_id: str | None = None, user: CurrentUser = Depends(get_current_user)):
+@router.get("", response_model=None)
+def list_users(
+    branch_id: str | None = None,
+    role_filter: str | None = None,
+    status_filter: str | None = None,
+    search: str | None = None,
+    sort_by: str = "registered_at",
+    sort_dir: str = "desc",
+    page: int | None = None,
+    page_size: int = 25,
+    user: CurrentUser = Depends(get_current_user),
+) -> list[dict] | Page:
+    """Returns a plain array when no ``page`` is given, or a paginated ``Page``
+    envelope when ``page`` is provided.
+
+    The array form is load-bearing: My Account's transfer-super-admin picker
+    reads this endpoint and needs every user, not a page of them.
+    """
     if user.is_super_admin:
         client = get_service_client()
-        query = client.table("profiles").select("*")
+        query = client.table("profiles").select("*", count="exact")
         if branch_id:
             query = query.eq("branch_id", branch_id)
-        return _with_last_login(query.execute().data)
-
-    if user.role == "branch_admin":
+    elif user.role == "branch_admin":
         client = get_scoped_client(user.access_token)
-        rows = client.table("profiles").select("*").eq("branch_id", user.branch_id).execute().data
-        return _with_last_login(rows)
+        query = (
+            client.table("profiles")
+            .select("*", count="exact")
+            .eq("branch_id", user.branch_id)
+        )
+    else:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to list users")
 
-    raise HTTPException(status.HTTP_403_FORBIDDEN, "Not permitted to list users")
+    order_col = sort_by if sort_by in _SORTABLE else "registered_at"
+    query = query.order(order_col, desc=(sort_dir != "asc"))
+    if role_filter:
+        query = query.eq("role", role_filter)
+    if status_filter in ("active", "inactive"):
+        query = query.eq("is_active", status_filter == "active")
+    if search and search.strip():
+        query = query.or_(ilike_or(search, ["full_name", "email", "mobile"]))
+
+    if page is None:
+        return _with_last_login(query.execute().data)
+    result = paginate(query, page, page_size)
+    # Enrich only the rows on this page — one auth lookup either way.
+    result["items"] = _with_last_login(result["items"])
+    return result
 
 
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)

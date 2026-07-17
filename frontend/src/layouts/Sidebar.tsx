@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessagesSquare, GraduationCap, CalendarRange, ListChecks,
-  BookOpen, Wallet, Megaphone, Sparkles, Users, UserCircle, X,
+  BookOpen, Wallet, Megaphone, Sparkles, Users, UserCircle, X, LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/context/AuthContext'
@@ -14,8 +14,8 @@ const ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 const NAV_ORDER: ModuleKey[] = [
-  'dashboard', 'enquiry', 'enrollment', 'batch_management', 'batch_execution',
-  'curriculum', 'expense', 'student_management', 'user_management', 'my_account',
+  'dashboard', 'enquiry', 'enrollment', 'curriculum', 'batch_management',
+  'batch_execution', 'expense', 'student_management', 'user_management', 'my_account',
 ]
 
 interface SidebarProps {
@@ -24,7 +24,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
-  const { profile } = useAuth()
+  const { profile, signOut } = useAuth()
   if (!profile) return null
 
   const isSuperAdmin = profile.role === 'super_admin'
@@ -47,7 +47,8 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       )}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 shrink-0 transform border-r border-(--color-border) bg-(--color-sidebar) transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0',
+          // flex column so the nav scrolls and Sign out stays pinned below it.
+          'fixed inset-y-0 left-0 z-50 flex w-64 shrink-0 transform flex-col border-r border-(--color-border) bg-(--color-sidebar) transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0',
           mobileOpen ? 'translate-x-0' : '-translate-x-full',
         )}
       >
@@ -60,7 +61,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="flex flex-col gap-1 p-3">
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3">
           {visibleModules.map((key) => {
             const meta = MODULE_META[key]
             const Icon = ICONS[meta.icon]
@@ -92,6 +93,17 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
             )
           })}
         </nav>
+
+        {/* Sits under the menu, separated so it never reads as a nav item. */}
+        <div className="border-t border-(--color-border) p-3">
+          <button
+            onClick={signOut}
+            className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-(--color-destructive) transition-colors hover:bg-(--color-destructive)/10"
+          >
+            <LogOut className="h-4.5 w-4.5 shrink-0" />
+            Sign out
+          </button>
+        </div>
       </aside>
     </>
   )

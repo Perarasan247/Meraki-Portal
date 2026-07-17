@@ -8,7 +8,7 @@ import type {
   Curriculum, CurriculumContent, Domain, ModuleTree, LessonTree, LessonBlock,
   Quiz, QuizQuestion, LessonBlockType, QuizQuestionType,
   Enquiry, Enrollment, Batch, Expense, StudentAccount, ManagedUser, Profile, BackupCounts,
-  Branch, EnquiryStatus, Campaign,
+  Branch, Campaign,
 } from '@/lib/types'
 
 const BRANCH = 'dev-branch'
@@ -38,12 +38,12 @@ const CAMPAIGNS: Campaign[] = [
 
 // --- curricula (list metadata) ---
 const CURRICULA: Curriculum[] = [
-  { id: 'cur1', branch_id: BRANCH, domain_id: 'dev-domain', program: 'Generative AI, LLMs & AI Agents', title: 'Foundations of Generative AI', status: 'Published', phases: [
+  { id: 'cur1', branch_id: BRANCH, scope: 'Internship', domain_id: 'dev-domain', program: 'Generative AI, LLMs & AI Agents', title: 'Foundations of Generative AI', status: 'Published', phases: [
     { id: 'ph1', title: 'Foundations', description: 'Intro to LLMs and prompting', order: 1, estimated_duration: '2 weeks' },
     { id: 'ph2', title: 'Building with the API', description: 'Hands-on with the Claude API', order: 2, estimated_duration: '3 weeks' },
     { id: 'ph3', title: 'Capstone Project', description: 'Ship a small AI app', order: 3, estimated_duration: '2 weeks' },
   ], created_at: now() },
-  { id: 'cur2', branch_id: BRANCH, domain_id: 'dev-domain', program: 'Generative AI, LLMs & AI Agents', title: 'Python for AI Engineering', status: 'Draft', phases: [], created_at: now() },
+  { id: 'cur2', branch_id: BRANCH, scope: 'Training', domain_id: 'dev-domain', program: 'Generative AI, LLMs & AI Agents', title: 'Python for AI Engineering', status: 'Draft', phases: [], created_at: now() },
 ]
 
 // --- branches ---
@@ -54,12 +54,12 @@ const BRANCHES: Branch[] = [
 
 // --- enquiries ---
 const ENQUIRIES: Enquiry[] = [
-  { id: 'e1', branch_id: BRANCH, student_name: 'Divya Raman', email: 'divya.raman@gmail.com', mobile: '9840012345', college: null, campaign_id: null, program: 'Generative AI & LLMs', year_of_study: '3rd Year', reference_source: 'Instagram', status: 'New', notes: null, created_at: '2026-06-28T10:00:00Z', converted_enrollment_id: null },
-  { id: 'e2', branch_id: BRANCH, student_name: 'Karthik Nair', email: 'karthik.nair@gmail.com', mobile: '9884567890', college: null, campaign_id: null, program: 'Full Stack Development', year_of_study: '4th Year', reference_source: 'College fair', status: 'Contacted', notes: 'Call back next week', created_at: '2026-06-25T09:00:00Z', converted_enrollment_id: null },
-  { id: 'e3', branch_id: BRANCH, student_name: 'Sneha Pillai', email: 'sneha.pillai@outlook.com', mobile: '9791234560', college: null, campaign_id: null, program: 'Robotics & IIoT', year_of_study: '2nd Year', reference_source: 'Referral', status: 'Interested', notes: 'Wants weekend batch', created_at: '2026-06-22T14:00:00Z', converted_enrollment_id: null },
-  { id: 'e4', branch_id: BRANCH, student_name: 'Arjun Mehta', email: 'arjun.mehta@gmail.com', mobile: '9812345678', college: null, campaign_id: null, program: 'Generative AI & LLMs', year_of_study: '3rd Year', reference_source: 'LinkedIn', status: 'Contacted', notes: null, created_at: '2026-06-20T11:30:00Z', converted_enrollment_id: null },
-  { id: 'e5', branch_id: BRANCH, student_name: 'Priya Venkat', email: 'priya.venkat@gmail.com', mobile: '9765432109', college: null, campaign_id: null, program: 'Data Analytics', year_of_study: '4th Year', reference_source: 'Instagram', status: 'Converted', notes: 'Enrolled', created_at: '2026-06-15T08:00:00Z', converted_enrollment_id: 'en1' },
-  { id: 'e6', branch_id: BRANCH, student_name: 'Rahul Das', email: null, mobile: '9900011122', college: null, campaign_id: null, program: 'Full Stack Development', year_of_study: '3rd Year', reference_source: 'Website', status: 'New', notes: null, created_at: '2026-06-30T16:00:00Z', converted_enrollment_id: null },
+  { id: 'e1', branch_id: BRANCH, student_name: 'Divya Raman', email: 'divya.raman@gmail.com', mobile: '9840012345', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Generative AI & LLMs', year_of_study: '3rd Year', reference_source: 'Instagram', status: 'New', notes: null, created_at: '2026-06-28T10:00:00Z', converted_enrollment_id: null },
+  { id: 'e2', branch_id: BRANCH, student_name: 'Karthik Nair', email: 'karthik.nair@gmail.com', mobile: '9884567890', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Full Stack Development', year_of_study: '4th Year', reference_source: 'College fair', status: 'Contacted', notes: 'Call back next week', created_at: '2026-06-25T09:00:00Z', converted_enrollment_id: null },
+  { id: 'e3', branch_id: BRANCH, student_name: 'Sneha Pillai', email: 'sneha.pillai@outlook.com', mobile: '9791234560', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Robotics & IIoT', year_of_study: '2nd Year', reference_source: 'Referral', status: 'Interested', notes: 'Wants weekend batch', created_at: '2026-06-22T14:00:00Z', converted_enrollment_id: null },
+  { id: 'e4', branch_id: BRANCH, student_name: 'Arjun Mehta', email: 'arjun.mehta@gmail.com', mobile: '9812345678', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Generative AI & LLMs', year_of_study: '3rd Year', reference_source: 'LinkedIn', status: 'Contacted', notes: null, created_at: '2026-06-20T11:30:00Z', converted_enrollment_id: null },
+  { id: 'e5', branch_id: BRANCH, student_name: 'Priya Venkat', email: 'priya.venkat@gmail.com', mobile: '9765432109', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Data Analytics', year_of_study: '4th Year', reference_source: 'Instagram', status: 'Converted', notes: 'Enrolled', created_at: '2026-06-15T08:00:00Z', converted_enrollment_id: 'en1' },
+  { id: 'e6', branch_id: BRANCH, student_name: 'Rahul Das', email: null, mobile: '9900011122', college: null, campaign_id: null, enquiry_type: 'Internship', program: 'Full Stack Development', year_of_study: '3rd Year', reference_source: 'Website', status: 'New', notes: null, created_at: '2026-06-30T16:00:00Z', converted_enrollment_id: null },
 ]
 
 // --- enrollments ---
@@ -72,10 +72,10 @@ const ENROLLMENTS: Enrollment[] = [
 
 // --- batches ---
 const BATCHES: Batch[] = [
-  { id: 'b1', branch_id: BRANCH, batch_name: 'DA-2026-A', program: 'Data Analytics & Visualisation', trainer: 'Ananya Rao', venue: null, start_date: '2026-07-01', end_date: '2026-09-15', seats_total: 30, seats_filled: 22, mode: 'Hybrid', status: 'Active', created_at: '2026-06-01T09:00:00Z' },
-  { id: 'b2', branch_id: BRANCH, batch_name: 'GENAI-2026-A', program: 'Generative AI, LLMs & AI Agents', trainer: 'Suresh Kumar', venue: null, start_date: '2026-07-10', end_date: '2026-09-30', seats_total: 25, seats_filled: 18, mode: 'Online', status: 'Active', created_at: '2026-06-05T09:00:00Z' },
-  { id: 'b3', branch_id: BRANCH, batch_name: 'FS-2026-B', program: 'Full Stack Development', trainer: 'Nadia Fernandez', venue: null, start_date: '2026-08-01', end_date: '2026-10-20', seats_total: 30, seats_filled: 9, mode: 'Offline', status: 'Upcoming', created_at: '2026-06-20T09:00:00Z' },
-  { id: 'b4', branch_id: BRANCH, batch_name: 'ROB-2026-A', program: 'Robotics & Industrial IoT', trainer: 'Imran Khan', venue: null, start_date: '2026-05-01', end_date: '2026-07-01', seats_total: 20, seats_filled: 20, mode: 'Offline', status: 'Completed', created_at: '2026-04-15T09:00:00Z' },
+  { id: 'b1', branch_id: BRANCH, scope: 'Internship', batch_name: 'DA-2026-A', program: 'Data Analytics & Visualisation', trainer: 'Ananya Rao', venue: null, start_date: '2026-07-01', end_date: '2026-09-15', seats_total: 30, seats_filled: 22, mode: 'Hybrid', status: 'Active', created_at: '2026-06-01T09:00:00Z' },
+  { id: 'b2', branch_id: BRANCH, scope: 'Training', batch_name: 'GENAI-2026-A', program: 'Generative AI, LLMs & AI Agents', trainer: 'Suresh Kumar', venue: null, start_date: '2026-07-10', end_date: '2026-09-30', seats_total: 25, seats_filled: 18, mode: 'Online', status: 'Active', created_at: '2026-06-05T09:00:00Z' },
+  { id: 'b3', branch_id: BRANCH, scope: 'Internship', batch_name: 'FS-2026-B', program: 'Full Stack Development', trainer: 'Nadia Fernandez', venue: null, start_date: '2026-08-01', end_date: '2026-10-20', seats_total: 30, seats_filled: 9, mode: 'Offline', status: 'Upcoming', created_at: '2026-06-20T09:00:00Z' },
+  { id: 'b4', branch_id: BRANCH, scope: 'Project', batch_name: 'ROB-2026-A', program: 'Robotics & Industrial IoT', trainer: 'Imran Khan', venue: null, start_date: '2026-05-01', end_date: '2026-07-01', seats_total: 20, seats_filled: 20, mode: 'Offline', status: 'Completed', created_at: '2026-04-15T09:00:00Z' },
 ]
 
 // --- expenses ---
@@ -205,9 +205,27 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
     let out = rows.slice()
     const search = qs.get('search')?.trim().toLowerCase()
     if (search) out = out.filter((r) => searchFields.map((f) => String(r[f] ?? '')).join(' ').toLowerCase().includes(search))
-    for (const [param, field] of [['status_filter', 'status'], ['fee_status', 'fee_status'], ['program', 'program'], ['domain_id', 'domain_id']] as const) {
+    for (const [param, field] of [['status_filter', 'status'], ['fee_status', 'fee_status'], ['program', 'program'], ['scope_filter', 'scope'], ['mode', 'mode'], ['year_of_study', 'year_of_study'], ['batch_id', 'batch_id'], ['domain_id', 'domain_id'], ['role_filter', 'role']] as const) {
       const v = qs.get(param)
-      if (v) out = out.filter((r) => r[field] === v)
+      // Only apply a filter these rows actually carry. `status_filter` means
+      // `status` for enquiries but `is_active` for users — without this guard
+      // it would match nothing and silently empty the list.
+      if (v && out.length > 0 && field in out[0]) out = out.filter((r) => r[field] === v)
+    }
+    // Users have no `status` column — their status is the is_active boolean.
+    const active = qs.get('status_filter')
+    if (active && out.length > 0 && 'is_active' in out[0]) {
+      out = out.filter((r) => r.is_active === (active === 'active'))
+    }
+    // Sort the whole set before paging, mirroring the real API.
+    const sortBy = qs.get('sort_by')
+    if (sortBy) {
+      const dir = qs.get('sort_dir') === 'asc' ? 1 : -1
+      out.sort((a, b) => {
+        const x = a[sortBy] ?? ''
+        const y = b[sortBy] ?? ''
+        return String(x).localeCompare(String(y), undefined, { numeric: true }) * dir
+      })
     }
     const pageParam = qs.get('page')
     if (!pageParam) return out
@@ -276,7 +294,7 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
 
   // ---- public website contact form -> lands as a new enquiry ----
   if (method === 'POST' && p === '/public/enquiry') {
-    const e: Enquiry = { id: uuid(), branch_id: BRANCH, student_name: B.name ?? '', email: B.email || null, mobile: B.mobile ?? '', college: null, campaign_id: null, program: B.program ?? '', year_of_study: null, reference_source: 'Website', status: 'New', notes: B.message || null, created_at: now(), converted_enrollment_id: null }
+    const e: Enquiry = { id: uuid(), branch_id: BRANCH, student_name: B.name ?? '', email: B.email || null, mobile: B.mobile ?? '', college: null, campaign_id: null, enquiry_type: 'Internship', program: B.program ?? '', year_of_study: null, reference_source: 'Website', status: 'New', notes: B.message || null, created_at: now(), converted_enrollment_id: null }
     ENQUIRIES.unshift(e)
     return { ok: true, id: e.id }
   }
@@ -284,7 +302,7 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   // ---- enquiries ----
   if (method === 'GET' && p === '/enquiries') return listResult(ENQUIRIES, ['student_name', 'mobile', 'program', 'email'])
   if (method === 'POST' && p === '/enquiries') {
-    const e: Enquiry = { id: uuid(), branch_id: BRANCH, student_name: B.student_name ?? '', email: B.email || null, mobile: B.mobile ?? '', college: B.college || null, program: B.program ?? '', year_of_study: B.year_of_study || null, reference_source: B.reference_source || null, campaign_id: B.campaign_id || null, status: B.status ?? 'New', notes: B.notes || null, created_at: now(), converted_enrollment_id: null }
+    const e: Enquiry = { id: uuid(), branch_id: BRANCH, student_name: B.student_name ?? '', email: B.email || null, mobile: B.mobile ?? '', college: B.college || null, enquiry_type: B.enquiry_type ?? 'Internship', program: B.program ?? '', year_of_study: B.year_of_study || null, reference_source: B.reference_source || null, campaign_id: B.campaign_id || null, status: B.status ?? 'New', notes: B.notes || null, created_at: now(), converted_enrollment_id: null }
     ENQUIRIES.unshift(e); return e
   }
   m = p.match(/^\/enquiries\/([^/]+)\/convert$/)
@@ -301,7 +319,7 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   m = p.match(/^\/enquiries\/([^/]+)$/)
   if (m) {
     const e = ENQUIRIES.find((x) => x.id === m![1])
-    if (method === 'PATCH' && e) { if (B.status) e.status = B.status as EnquiryStatus; return e }
+    if (method === 'PATCH' && e) { Object.assign(e, B); return e }
     if (method === 'DELETE' && e) { ENQUIRIES.splice(ENQUIRIES.indexOf(e), 1); return {} }
   }
 
@@ -347,8 +365,8 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   }
 
   // ---- batches ----
-  if (method === 'GET' && p === '/batches') return BATCHES
-  if (method === 'POST' && p === '/batches') { const b: Batch = { id: uuid(), branch_id: BRANCH, batch_name: B.batch_name ?? '', program: B.program ?? '', trainer: B.trainer || null, venue: B.venue || null, start_date: B.start_date || null, end_date: B.end_date || null, seats_total: B.seats_total ?? 0, seats_filled: B.seats_filled ?? 0, mode: B.mode ?? 'Online', status: B.status ?? 'Upcoming', created_at: now() }; BATCHES.unshift(b); return b }
+  if (method === 'GET' && p === '/batches') return listResult(BATCHES, ['batch_name', 'program', 'trainer', 'venue'])
+  if (method === 'POST' && p === '/batches') { const b: Batch = { id: uuid(), branch_id: BRANCH, batch_name: B.batch_name ?? '', program: B.program ?? '', scope: B.scope ?? 'Internship', trainer: B.trainer || null, venue: B.venue || null, start_date: B.start_date || null, end_date: B.end_date || null, seats_total: B.seats_total ?? 0, seats_filled: B.seats_filled ?? 0, mode: B.mode ?? 'Online', status: B.status ?? 'Upcoming', created_at: now() }; BATCHES.unshift(b); return b }
   m = p.match(/^\/batches\/([^/]+)$/)
   if (m) { const i = BATCHES.findIndex((x) => x.id === m![1]); if (i >= 0) { if (method === 'PATCH') { BATCHES[i] = { ...BATCHES[i], ...B }; return BATCHES[i] } if (method === 'DELETE') { BATCHES.splice(i, 1); return {} } } }
 
@@ -365,7 +383,7 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   if (m) { const s = STUDENTS.find((x) => x.id === m![1]); if (s) { if (method === 'PATCH') { Object.assign(s, B); if (B.domain_id) { const d = DOMAINS.find((dd) => dd.id === B.domain_id); s.domain_label = d ? d.label : s.domain_label } return s } if (method === 'DELETE') { STUDENTS.splice(STUDENTS.indexOf(s), 1); return {} } } }
 
   // ---- users (staff) ----
-  if (method === 'GET' && p === '/users') return USERS
+  if (method === 'GET' && p === '/users') return listResult(USERS, ['full_name', 'email', 'mobile'])
   if (method === 'GET' && p === '/users/module-access-coverage') { const t: Record<string, number> = {}; for (const u of USERS) for (const mod of u.modules) t[mod] = (t[mod] ?? 0) + 1; return t }
   if (method === 'POST' && p === '/users') { const u: ManagedUser = { id: uuid(), branch_id: B.branch_id || null, full_name: B.full_name ?? '', email: B.email ?? '', mobile: B.mobile || null, role: B.role === 'trainer' ? 'trainer' : 'branch_admin', modules: B.modules ?? [], permission_level: B.permission_level ?? 'custom', last_login: null, registered_at: now(), is_active: true }; USERS.push(u); return u }
   m = p.match(/^\/users\/([^/]+)\/transfer-super-admin$/)
@@ -406,11 +424,11 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   }
 
   // ---- curricula ----
-  if (method === 'GET' && p === '/curricula') return CURRICULA
+  if (method === 'GET' && p === '/curricula') return listResult(CURRICULA, ['title', 'program'])
   if (method === 'POST' && p === '/curricula') {
     const c: Curriculum = {
       id: uuid(), branch_id: B.branch_id || BRANCH, domain_id: B.domain_id ?? null,
-      program: B.program ?? '', title: B.title ?? '', status: 'Draft',
+      program: B.program ?? '', title: B.title ?? '', scope: B.scope ?? 'Internship', status: 'Draft',
       phases: B.phases ?? [], created_at: now(),
     }
     CURRICULA.push(c)

@@ -1,32 +1,61 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.core.auth import CurrentUser, require_module
+from app.core.pagination import ilike_or, paginate
 from app.core.scoping import apply_branch_filter, log_audit, resolve_branch_id
 from app.core.supabase_client import get_scoped_client
 from app.models.curriculum import CurriculumCreate, CurriculumOut, CurriculumUpdate
+from app.models.pagination import Page
 from app.services.excel_export import export_rows_to_xlsx
 
 router = APIRouter(prefix="/curricula", tags=["curricula"])
 
 MODULE = "curriculum"
 
+# Columns the list view may sort by. Whitelisted so a bad/injected value can't
+# reach the database — anything else falls back to created_at.
+_SORTABLE = {"title", "program", "scope", "status", "created_at"}
 
-@router.get("", response_model=list[CurriculumOut])
+
+@router.get("", response_model=None)
 def list_curricula(
     branch_id: str | None = None,
     program: str | None = None,
+    scope_filter: str | None = None,
     status_filter: str | None = None,
+    search: str | None = None,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
+    page: int | None = None,
+    page_size: int = 25,
     user: CurrentUser = Depends(require_module(MODULE)),
-):
+) -> list[dict] | Page:
+    """Returns a plain array when no ``page`` is given, or a paginated ``Page``
+    envelope when ``page`` is provided.
+
+    The array form is load-bearing: Batch Execution and the curriculum builder
+    read this endpoint and need every curriculum, not a page of them.
+    """
     client = get_scoped_client(user.access_token)
-    scope = resolve_branch_id(user, branch_id)
-    query = client.table("curricula").select("*").order("created_at", desc=True)
-    query = apply_branch_filter(query, scope)
+    branch_scope = resolve_branch_id(user, branch_id)
+    order_col = sort_by if sort_by in _SORTABLE else "created_at"
+    query = (
+        client.table("curricula")
+        .select("*", count="exact")
+        .order(order_col, desc=(sort_dir != "asc"))
+    )
+    query = apply_branch_filter(query, branch_scope)
     if program:
         query = query.eq("program", program)
+    if scope_filter:
+        query = query.eq("scope", scope_filter)
     if status_filter:
         query = query.eq("status", status_filter)
-    return query.execute().data
+    if search and search.strip():
+        query = query.or_(ilike_or(search, ["title", "program"]))
+    if page is None:
+        return query.execute().data
+    return paginate(query, page, page_size)
 
 
 @router.get("/export")

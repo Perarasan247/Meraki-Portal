@@ -19,9 +19,14 @@ MODULE = "enquiry"
 
 # Only the columns the list view needs (avoids over-fetching wide rows).
 _LIST_COLS = (
-    "id,branch_id,student_name,email,mobile,college,program,year_of_study,"
+    "id,branch_id,student_name,email,mobile,college,enquiry_type,program,year_of_study,"
     "reference_source,campaign_id,status,notes,created_at,converted_enrollment_id"
 )
+
+
+# Columns the list view may sort by. Whitelisted so a bad/injected value can't
+# reach the database — anything else falls back to created_at.
+_SORTABLE = {"student_name", "mobile", "program", "year_of_study", "status", "created_at"}
 
 
 @router.get("", response_model=None)
@@ -29,21 +34,35 @@ def list_enquiries(
     branch_id: str | None = None,
     status_filter: str | None = None,
     program: str | None = None,
+    year_of_study: str | None = None,
     search: str | None = None,
+    sort_by: str = "created_at",
+    sort_dir: str = "desc",
     page: int | None = None,
     page_size: int = 25,
     user: CurrentUser = Depends(require_module(MODULE)),
 ) -> list[dict] | Page:
     """Returns a plain array when no ``page`` is given (aggregate/board views),
-    or a paginated ``Page`` envelope when ``page`` is provided (list tables)."""
+    or a paginated ``Page`` envelope when ``page`` is provided (list tables).
+
+    Sorting is applied in the database so it orders the whole result set, not
+    just the rows on the current page.
+    """
     client = get_scoped_client(user.access_token)
     scope = resolve_branch_id(user, branch_id)
-    query = client.table("enquiries").select(_LIST_COLS, count="exact").order("created_at", desc=True)
+    order_col = sort_by if sort_by in _SORTABLE else "created_at"
+    query = (
+        client.table("enquiries")
+        .select(_LIST_COLS, count="exact")
+        .order(order_col, desc=(sort_dir != "asc"))
+    )
     query = apply_branch_filter(query, scope)
     if status_filter:
         query = query.eq("status", status_filter)
     if program:
         query = query.eq("program", program)
+    if year_of_study:
+        query = query.eq("year_of_study", year_of_study)
     if search and search.strip():
         query = query.or_(ilike_or(search, ["student_name", "mobile", "program", "email"]))
     if page is None:

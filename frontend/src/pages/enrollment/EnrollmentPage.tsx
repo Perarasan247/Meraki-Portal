@@ -1,12 +1,13 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, TrendingDown, Pencil, Trash2 } from 'lucide-react'
+import { Download, Plus, GraduationCap, Wallet, CircleDollarSign, TrendingDown, Pencil, Trash2, IndianRupee, X } from 'lucide-react'
 import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
 import { useProgramOptions } from '@/hooks/usePrograms'
 import { useDebounced } from '@/hooks/useDebounced'
 import { Pagination } from '@/components/ui/pagination'
+import { ViewEnrollmentDialog } from './ViewEnrollmentDialog'
 import { BranchField } from '@/components/ui/branch-field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { StatCard } from '@/components/ui/stat-card'
@@ -15,7 +16,8 @@ import { Meter } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import { Input, Label, Select } from '@/components/ui/input'
 import { MobileInput } from '@/components/ui/mobile-input'
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, SortableHead } from '@/components/ui/table'
+import type { SortState } from '@/components/ui/table'
 import { StatusBadge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton, StatCardSkeleton } from '@/components/ui/skeleton'
@@ -24,7 +26,7 @@ import { useConfirm } from '@/components/ui/confirm'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { Enrollment, FeeStatus, Batch, Page } from '@/lib/types'
 
-const PAGE_SIZE = 25
+const DEFAULT_PAGE_SIZE = 5
 
 const FEE_STATUSES: FeeStatus[] = ['Paid', 'Partial', 'Pending']
 const YEARS = ['1st Year', '2nd Year', '3rd Year', '4th Year']
@@ -308,7 +310,7 @@ function EnrollmentDashboard({
                   <TableHead>Student</TableHead>
                   <TableHead>Program</TableHead>
                   <TableHead>Batch</TableHead>
-                  <TableHead className="min-w-56">Fee Collection</TableHead>
+                  <TableHead>Fee Collection</TableHead>
                   <TableHead className="text-right">Pending</TableHead>
                   <TableHead>Status</TableHead>
                 </TableRow>
@@ -338,10 +340,10 @@ function EnrollmentDashboard({
 /** Paid / total with a fee meter — the money-centric record cell. */
 function FeeCell({ enrollment: e }: { enrollment: Enrollment }) {
   return (
-    <div className="min-w-48">
-      <div className="flex items-baseline justify-between gap-2 text-sm tabular-nums">
+    <div className="min-w-32">
+      <div className="flex items-baseline gap-1 text-sm tabular-nums">
         <span className="font-medium text-(--color-foreground)">{formatCurrency(e.paid_amount)}</span>
-        <span className="text-xs text-(--color-muted-foreground)">of {formatCurrency(e.total_fee)}</span>
+        <span className="text-xs text-(--color-muted-foreground)">/ {formatCurrency(e.total_fee)}</span>
       </div>
       <Meter
         value={e.paid_amount}
@@ -364,43 +366,64 @@ function EnrollmentListView({
   const branchParam = useBranchQueryParam()
   const [search, setSearch] = React.useState('')
   const [feeStatusFilter, setFeeStatusFilter] = React.useState('')
+  const [programFilter, setProgramFilter] = React.useState('')
+  const [yearFilter, setYearFilter] = React.useState('')
+  const [batchFilter, setBatchFilter] = React.useState('')
   const [page, setPage] = React.useState(1)
+  const [pageSize, setPageSize] = React.useState(DEFAULT_PAGE_SIZE)
+  const [sort, setSort] = React.useState<SortState>({ by: 'created_at', dir: 'desc' })
+  const [viewing, setViewing] = React.useState<Enrollment | null>(null)
   const [paymentTarget, setPaymentTarget] = React.useState<Enrollment | null>(null)
   const queryClient = useQueryClient()
 
   const debouncedSearch = useDebounced(search.trim(), 300)
-  React.useEffect(() => setPage(1), [debouncedSearch, feeStatusFilter])
+  const programs = useProgramOptions()
+  // Batch options come from the map the page already loaded — no extra request.
+  const batchOptions = React.useMemo(
+    () => [...batchNameById].sort((a, b) => a[1].localeCompare(b[1])),
+    [batchNameById],
+  )
+  const hasFilters = !!(search || feeStatusFilter || programFilter || yearFilter || batchFilter)
+  // Any change to what's being listed sends you back to page 1.
+  React.useEffect(
+    () => setPage(1),
+    [debouncedSearch, feeStatusFilter, programFilter, yearFilter, batchFilter, pageSize, sort],
+  )
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['enrollments', branchParam, 'list', page, debouncedSearch, feeStatusFilter],
-    queryFn: () => {
+  // One builder for both the query and the prefetch, so they can't drift apart.
+  const listKey = React.useCallback(
+    (p: number) => ['enrollments', branchParam, 'list', p, pageSize, debouncedSearch, feeStatusFilter, programFilter, yearFilter, batchFilter, sort.by, sort.dir],
+    [branchParam, pageSize, debouncedSearch, feeStatusFilter, programFilter, yearFilter, batchFilter, sort],
+  )
+  const fetchPage = React.useCallback(
+    (p: number) => {
       const qs = new URLSearchParams(branchParam)
-      qs.set('page', String(page))
-      qs.set('page_size', String(PAGE_SIZE))
+      qs.set('page', String(p))
+      qs.set('page_size', String(pageSize))
+      qs.set('sort_by', sort.by)
+      qs.set('sort_dir', sort.dir)
       if (debouncedSearch) qs.set('search', debouncedSearch)
       if (feeStatusFilter) qs.set('fee_status', feeStatusFilter)
+      if (programFilter) qs.set('program', programFilter)
+      if (yearFilter) qs.set('year_of_study', yearFilter)
+      if (batchFilter) qs.set('batch_id', batchFilter)
       return api.get<Page<Enrollment>>(`/enrollments?${qs.toString()}`)
     },
+    [branchParam, pageSize, sort, debouncedSearch, feeStatusFilter, programFilter, yearFilter, batchFilter],
+  )
+
+  const { data, isLoading } = useQuery({
+    queryKey: listKey(page),
+    queryFn: () => fetchPage(page),
     placeholderData: keepPreviousData,
   })
   const items = data?.items ?? []
   const total = data?.total ?? 0
 
   React.useEffect(() => {
-    if (page * PAGE_SIZE >= total) return
-    const next = page + 1
-    queryClient.prefetchQuery({
-      queryKey: ['enrollments', branchParam, 'list', next, debouncedSearch, feeStatusFilter],
-      queryFn: () => {
-        const qs = new URLSearchParams(branchParam)
-        qs.set('page', String(next))
-        qs.set('page_size', String(PAGE_SIZE))
-        if (debouncedSearch) qs.set('search', debouncedSearch)
-        if (feeStatusFilter) qs.set('fee_status', feeStatusFilter)
-        return api.get<Page<Enrollment>>(`/enrollments?${qs.toString()}`)
-      },
-    })
-  }, [page, total, debouncedSearch, feeStatusFilter, branchParam, queryClient])
+    if (page * pageSize >= total) return
+    queryClient.prefetchQuery({ queryKey: listKey(page + 1), queryFn: () => fetchPage(page + 1) })
+  }, [page, pageSize, total, queryClient, listKey, fetchPage])
 
   const paymentMutation = useMutation({
     mutationFn: ({ id, amount }: { id: string; amount: number }) => api.post(`/enrollments/${id}/payment`, { amount }),
@@ -424,14 +447,39 @@ function EnrollmentListView({
   return (
     <>
       <Card>
-        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+        {/* Title and toolbar stack, so both sit flush with the table's left edge.
+            They can't share a row — five filters never fit beside the title. */}
+        <CardHeader className="gap-3">
           <CardTitle>Student Records</CardTitle>
           <div className="flex flex-wrap items-center gap-2">
-            <Input placeholder="Search name, mobile, program…" value={search} onChange={(e) => setSearch(e.target.value)} className="w-full sm:w-56" />
-            <Select value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="w-auto">
-              <option value="">All fee statuses</option>
+            {/* Search grows to absorb the leftover width, so the last filter
+                lands flush with the table's right edge. */}
+            <Input placeholder="Search name, mobile, program…" value={search} onChange={(e) => setSearch(e.target.value)} className="min-w-56 flex-1" />
+            <Select aria-label="Filter by program" value={programFilter} onChange={(e) => setProgramFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All programs</option>
+              {programs.map((p) => <option key={p} value={p}>{p}</option>)}
+            </Select>
+            <Select aria-label="Filter by year of study" value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All years</option>
+              {YEARS.map((y) => <option key={y} value={y}>{y}</option>)}
+            </Select>
+            <Select aria-label="Filter by batch" value={batchFilter} onChange={(e) => setBatchFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All batches</option>
+              {batchOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            </Select>
+            <Select aria-label="Filter by fee status" value={feeStatusFilter} onChange={(e) => setFeeStatusFilter(e.target.value)} className="w-auto max-w-44">
+              <option value="">All fee status</option>
               {FEE_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSearch(''); setFeeStatusFilter(''); setProgramFilter(''); setYearFilter(''); setBatchFilter('') }}
+              >
+                <X className="h-3.5 w-3.5" /> Clear
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -443,10 +491,12 @@ function EnrollmentListView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Student</TableHead>
+                  {/* Only Student sorts. Program/Status have dropdown filters
+                      above, and Pending is read off the Fee Collection bars. */}
+                  <SortableHead label="Student" column="student_name" sort={sort} onSort={setSort} />
                   <TableHead>Program</TableHead>
                   <TableHead>Batch</TableHead>
-                  <TableHead className="min-w-56">Fee Collection</TableHead>
+                  <TableHead>Fee Collection</TableHead>
                   <TableHead className="text-right">Pending</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -454,26 +504,42 @@ function EnrollmentListView({
               </TableHeader>
               <TableBody>
                 {items.map((e) => (
-                  <TableRow key={e.id}>
+                  <TableRow
+                    key={e.id}
+                    onClick={() => setViewing(e)}
+                    className="cursor-pointer"
+                    title="View details"
+                  >
                     <TableCell>
-                      <p className="font-medium">{e.student_name}</p>
-                      <p className="text-xs text-(--color-muted-foreground) tabular-nums">{e.mobile}</p>
+                      <p className="max-w-[9rem] truncate font-medium" title={e.student_name}>{e.student_name}</p>
+                      <p className="text-xs tabular-nums text-(--color-muted-foreground)">{e.mobile}</p>
                     </TableCell>
                     <TableCell>
-                      <p>{e.program}</p>
+                      <p className="max-w-[10rem] truncate" title={e.program}>{e.program}</p>
                       {e.year_of_study && <p className="text-xs text-(--color-muted-foreground)">{e.year_of_study}</p>}
                     </TableCell>
-                    <TableCell>{e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}</TableCell>
+                    <TableCell>
+                      <span className="block max-w-[8rem] truncate" title={e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}>
+                        {e.batch_id ? batchNameById.get(e.batch_id) ?? '—' : '—'}
+                      </span>
+                    </TableCell>
                     <TableCell><FeeCell enrollment={e} /></TableCell>
                     <TableCell className="text-right font-medium tabular-nums text-rose-600 dark:text-rose-400">
                       {e.pending_amount > 0 ? formatCurrency(e.pending_amount) : '—'}
                     </TableCell>
                     <TableCell><StatusBadge status={e.fee_status} /></TableCell>
-                    <TableCell className="text-right">
+                    {/* Buttons must not also trigger the row's view-details click. */}
+                    <TableCell className="text-right" onClick={(ev) => ev.stopPropagation()}>
                       <div className="flex items-center justify-end gap-1.5">
                         {e.fee_status !== 'Paid' && (
-                          <Button size="sm" variant="outline" onClick={() => setPaymentTarget(e)}>
-                            Record Payment
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            title="Record payment"
+                            aria-label={`Record payment for ${e.student_name}`}
+                            onClick={() => setPaymentTarget(e)}
+                          >
+                            <IndianRupee className="h-3.5 w-3.5" />
                           </Button>
                         )}
                         <Button size="sm" variant="ghost" aria-label={`Edit ${e.student_name}`} onClick={() => onEdit(e)}>
@@ -504,7 +570,20 @@ function EnrollmentListView({
         </CardContent>
       </Card>
 
-      <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPage={setPage} />
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPage={setPage}
+        onPageSizeChange={setPageSize}
+      />
+
+      <ViewEnrollmentDialog
+        enrollment={viewing}
+        batchNameById={batchNameById}
+        onClose={() => setViewing(null)}
+        onEdit={(en) => { setViewing(null); onEdit(en) }}
+      />
 
       <RecordPaymentDialog
         enrollment={paymentTarget}

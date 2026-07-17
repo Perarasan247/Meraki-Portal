@@ -5,11 +5,13 @@ from pydantic import BaseModel, Field
 
 BatchMode = Literal["Online", "Offline", "Hybrid"]
 BatchStatus = Literal["Upcoming", "Active", "Completed"]
+BatchScope = Literal["Training", "Internship", "Project"]
 
 
 class BatchCreate(BaseModel):
     batch_name: str = Field(min_length=1)
     program: str = Field(min_length=1)
+    scope: BatchScope = "Internship"
     trainer: str | None = None
     venue: str | None = None
     start_date: date | None = None
@@ -24,6 +26,7 @@ class BatchCreate(BaseModel):
 class BatchUpdate(BaseModel):
     batch_name: str | None = None
     program: str | None = None
+    scope: BatchScope | None = None
     trainer: str | None = None
     venue: str | None = None
     start_date: date | None = None
@@ -32,6 +35,9 @@ class BatchUpdate(BaseModel):
     seats_filled: int | None = None
     mode: BatchMode | None = None
     status: BatchStatus | None = None
+    # Moving a batch between branches is super-admin only and drags its
+    # enrolled students and progress tracking with it — see update_batch.
+    branch_id: str | None = None
 
 
 class BatchOut(BaseModel):
@@ -39,6 +45,7 @@ class BatchOut(BaseModel):
     branch_id: str
     batch_name: str
     program: str
+    scope: BatchScope = "Internship"
     trainer: str | None
     venue: str | None = None
     start_date: date | None

@@ -19,10 +19,13 @@ export function BranchField({
   id = 'branch_id',
   value,
   onChange,
+  hint,
 }: {
   id?: string
   value: string
   onChange: (branchId: string) => void
+  /** Shown under the picker — e.g. what moving an existing record will drag along. */
+  hint?: React.ReactNode
 }) {
   const { profile, viewingBranchId } = useAuth()
   const isSuperAdmin = profile?.role === 'super_admin'
@@ -51,6 +54,7 @@ export function BranchField({
           <option key={b.id} value={b.id}>{b.name}</option>
         ))}
       </Select>
+      {hint && <p className="mt-1.5 text-xs text-(--color-muted-foreground)">{hint}</p>}
     </div>
   )
 }

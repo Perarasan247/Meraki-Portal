@@ -8,6 +8,7 @@ import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { AppIndex } from '@/routes/AppIndex'
 import { PreviewSwitcher } from '@/components/dev/PreviewSwitcher'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ScrollToTop } from '@/components/ScrollToTop'
 import { ConfirmProvider } from '@/components/ui/confirm'
 import { PageLoader } from '@/components/PageLoader'
 
@@ -68,6 +69,7 @@ export default function App() {
         <AuthProvider>
           <ConfirmProvider>
           <Router>
+            <ScrollToTop />
             <Suspense fallback={<PageLoader className="min-h-dvh" />}>
             <Routes>
               {/* Public marketing website */}
