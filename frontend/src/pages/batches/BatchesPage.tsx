@@ -21,7 +21,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   SortableHead, type SortState,
 } from '@/components/ui/table'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { ViewBatchDialog } from './ViewBatchDialog'
 import { cn, formatDate } from '@/lib/utils'
 import type { Batch, BatchMode, BatchScope, BatchStatus, Page } from '@/lib/types'
@@ -269,7 +269,7 @@ function BatchListView({ onEdit }: { onEdit: (b: Batch) => void }) {
       if (scopeFilter) qs.set('scope_filter', scopeFilter)
       if (modeFilter) qs.set('mode', modeFilter)
       if (statusFilter) qs.set('status_filter', statusFilter)
-      return api.get<Page<Batch>>(`/batches?${qs.toString()}`)
+      return api.get<Page<Batch> | Batch[]>(`/batches?${qs.toString()}`).then(asPage)
     },
     [branchParam, pageSize, sort, debouncedSearch, programFilter, scopeFilter, modeFilter, statusFilter],
   )

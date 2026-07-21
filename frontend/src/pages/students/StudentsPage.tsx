@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { cn, formatDate } from '@/lib/utils'
 import type { StudentAccount, Page } from '@/lib/types'
 
@@ -59,7 +59,7 @@ export default function StudentsPage() {
     queryFn: () => {
       const p = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) })
       if (debouncedSearch) p.set('search', debouncedSearch)
-      return api.get<Page<StudentAccount>>(`/students?${p.toString()}`)
+      return api.get<Page<StudentAccount> | StudentAccount[]>(`/students?${p.toString()}`).then(asPage)
     },
     placeholderData: keepPreviousData, // keep the current page visible while the next loads
   })
@@ -96,7 +96,7 @@ export default function StudentsPage() {
       queryFn: () => {
         const p = new URLSearchParams({ page: String(next), page_size: String(PAGE_SIZE) })
         if (debouncedSearch) p.set('search', debouncedSearch)
-        return api.get<Page<StudentAccount>>(`/students?${p.toString()}`)
+        return api.get<Page<StudentAccount> | StudentAccount[]>(`/students?${p.toString()}`).then(asPage)
       },
     })
   }, [page, total, debouncedSearch, queryClient])

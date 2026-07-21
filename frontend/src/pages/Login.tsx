@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ShieldCheck, GraduationCap } from 'lucide-react'
+import { ShieldCheck, GraduationCap, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api, ApiError } from '@/lib/api'
 import { roleFromSession } from '@/context/AuthContext'
@@ -18,6 +18,7 @@ export default function Login() {
   const [mode, setMode] = React.useState<LoginMode>('admin')
   const [identifier, setIdentifier] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [showPassword, setShowPassword] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -108,15 +109,27 @@ export default function Login() {
                 Forgot password?
               </Link>
             </div>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-(--color-muted-foreground) hover:text-(--color-foreground)"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
           <Button type="submit" className="w-full" loading={loading}>
             Sign in

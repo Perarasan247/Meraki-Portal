@@ -6,7 +6,7 @@ import { api, downloadExport } from '@/lib/api'
 import { useBranchQueryParam } from '@/hooks/useModuleAccess'
 import { useProgramOptions } from '@/hooks/usePrograms'
 import { useDebounced } from '@/hooks/useDebounced'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { ViewEnrollmentDialog } from './ViewEnrollmentDialog'
 import { BranchField } from '@/components/ui/branch-field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -407,7 +407,7 @@ function EnrollmentListView({
       if (programFilter) qs.set('program', programFilter)
       if (yearFilter) qs.set('year_of_study', yearFilter)
       if (batchFilter) qs.set('batch_id', batchFilter)
-      return api.get<Page<Enrollment>>(`/enrollments?${qs.toString()}`)
+      return api.get<Page<Enrollment> | Enrollment[]>(`/enrollments?${qs.toString()}`).then(asPage)
     },
     [branchParam, pageSize, sort, debouncedSearch, feeStatusFilter, programFilter, yearFilter, batchFilter],
   )

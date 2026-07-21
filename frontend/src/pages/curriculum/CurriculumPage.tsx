@@ -24,7 +24,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
   SortableHead, type SortState,
 } from '@/components/ui/table'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { ViewCurriculumDialog } from './ViewCurriculumDialog'
 import { sdlcPhases } from '@/lib/sdlc'
 import { cn, formatDate } from '@/lib/utils'
@@ -235,7 +235,7 @@ function CurriculumListView({ onEdit }: { onEdit: (c: Curriculum) => void }) {
       if (scopeFilter) qs.set('scope_filter', scopeFilter)
       if (programFilter) qs.set('program', programFilter)
       if (statusFilter) qs.set('status_filter', statusFilter)
-      return api.get<Page<Curriculum>>(`/curricula?${qs.toString()}`)
+      return api.get<Page<Curriculum> | Curriculum[]>(`/curricula?${qs.toString()}`).then(asPage)
     },
     [branchParam, pageSize, sort, debouncedSearch, scopeFilter, programFilter, statusFilter],
   )

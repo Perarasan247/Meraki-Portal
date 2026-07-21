@@ -1,8 +1,26 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './button'
 import { Select } from './input'
+import type { Page } from '@/lib/types'
 
 export const PAGE_SIZE_OPTIONS = [5, 10, 25, 50]
+
+/**
+ * Coerce a list response into a Page envelope.
+ *
+ * The list endpoints return a paginated `{items,total,…}` envelope when asked
+ * for a page, but a plain array otherwise. During a deploy the new frontend can
+ * hit a not-yet-updated backend that still returns the array; without this the
+ * table reads `.items` off an array, gets undefined, and shows nothing. Treat a
+ * bare array as a single full page so the list still renders — real pagination
+ * resumes once the backend catches up.
+ */
+export function asPage<T>(res: Page<T> | T[]): Page<T> {
+  if (Array.isArray(res)) {
+    return { items: res, total: res.length, page: 1, page_size: res.length || 1 }
+  }
+  return res
+}
 
 /**
  * Pagination bar for server-paginated tables.

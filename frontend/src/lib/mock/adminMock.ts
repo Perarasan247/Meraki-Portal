@@ -4,6 +4,7 @@
  * /domains and /lms/* endpoints so the whole authoring flow is demoable and
  * fully interactive with no backend. Dynamic-imported from api.ts.
  */
+import { ApiError } from '@/lib/api'
 import type {
   Curriculum, CurriculumContent, Domain, ModuleTree, LessonTree, LessonBlock,
   Quiz, QuizQuestion, LessonBlockType, QuizQuestionType,
@@ -290,6 +291,16 @@ export function handleAdminMock(method: string, path: string, body: any): unknow
   if (method === 'POST' && p === '/branches') {
     const b: Branch = { id: uuid(), name: B.name ?? '', address: B.address ?? null }
     BRANCHES.push(b); return b
+  }
+  m = p.match(/^\/branches\/([^/]+)$/)
+  if (method === 'DELETE' && m) {
+    const id = m[1]
+    // Mirror the API: refuse if the branch still holds users or business data.
+    const users = USERS.filter((u) => u.branch_id === id).length
+    if (users) throw new ApiError(409, `This branch still has ${users} user${users > 1 ? 's' : ''}. Move or remove them first, then delete the branch.`)
+    const i = BRANCHES.findIndex((b) => b.id === id)
+    if (i >= 0) BRANCHES.splice(i, 1)
+    return {}
   }
 
   // ---- public website contact form -> lands as a new enquiry ----

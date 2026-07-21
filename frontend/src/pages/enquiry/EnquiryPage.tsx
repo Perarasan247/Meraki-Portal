@@ -17,7 +17,7 @@ import type { SortState } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton, Skeleton } from '@/components/ui/skeleton'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { ViewEnquiryDialog } from './ViewEnquiryDialog'
 import { BranchField } from '@/components/ui/branch-field'
 import { Dialog } from '@/components/ui/dialog'
@@ -413,7 +413,7 @@ function EnquiryListView({
       if (statusFilter) qs.set('status_filter', statusFilter)
       if (programFilter) qs.set('program', programFilter)
       if (yearFilter) qs.set('year_of_study', yearFilter)
-      return api.get<Page<Enquiry>>(`/enquiries?${qs.toString()}`)
+      return api.get<Page<Enquiry> | Enquiry[]>(`/enquiries?${qs.toString()}`).then(asPage)
     },
     [branchParam, pageSize, sort, debouncedSearch, statusFilter, programFilter, yearFilter],
   )

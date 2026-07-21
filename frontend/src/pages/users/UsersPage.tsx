@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Plus, Users, ShieldCheck, CircleDot, Pencil, Trash2, X } from 'lucide-react'
+import { Plus, Users, ShieldCheck, CircleDot, Pencil, Trash2, X, Building2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/context/AuthContext'
 import { useDebounced } from '@/hooks/useDebounced'
@@ -15,7 +15,7 @@ import {
   Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
   SortableHead, type SortState,
 } from '@/components/ui/table'
-import { Pagination } from '@/components/ui/pagination'
+import { Pagination, asPage } from '@/components/ui/pagination'
 import { EmptyState } from '@/components/ui/empty-state'
 import { TableSkeleton } from '@/components/ui/skeleton'
 import { cn, formatDate } from '@/lib/utils'
@@ -23,6 +23,7 @@ import { MODULE_META, type ManagedUser, type ModuleKey, type UserRole, type Page
 import { NewUserDialog } from '@/pages/users/NewUserDialog'
 import { EditUserDialog } from '@/pages/users/EditUserDialog'
 import { ViewUserDialog } from '@/pages/users/ViewUserDialog'
+import { BranchesDialog } from '@/pages/users/NewBranchDialog'
 
 const ROLES: UserRole[] = ['super_admin', 'branch_admin', 'trainer', 'staff', 'custom']
 const DEFAULT_PAGE_SIZE = 5
@@ -56,6 +57,7 @@ function roleLabel(role: string): string {
 export default function UsersPage() {
   const { profile } = useAuth()
   const [formOpen, setFormOpen] = React.useState(false)
+  const [branchOpen, setBranchOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<ManagedUser | null>(null)
   // Unpaginated — the chips count every user, not just the page on screen.
   const { data: users } = useUsers()
@@ -85,9 +87,15 @@ export default function UsersPage() {
         icon={Users}
         actions={
           isSuperAdmin && (
-            <Button onClick={() => setFormOpen(true)}>
-              <Plus className="h-4 w-4" /> New User
-            </Button>
+            <>
+              {/* Secondary: adding a branch is rarer than adding a user. */}
+              <Button variant="outline" onClick={() => setBranchOpen(true)}>
+                <Building2 className="h-4 w-4" /> Branches
+              </Button>
+              <Button onClick={() => setFormOpen(true)}>
+                <Plus className="h-4 w-4" /> New User
+              </Button>
+            </>
           )
         }
       />
@@ -103,6 +111,7 @@ export default function UsersPage() {
       {isSuperAdmin && (
         <>
           <NewUserDialog open={formOpen} onClose={() => setFormOpen(false)} />
+          <BranchesDialog open={branchOpen} onClose={() => setBranchOpen(false)} />
           <EditUserDialog user={editing} onClose={() => setEditing(null)} />
         </>
       )}
@@ -144,7 +153,7 @@ function UsersListView({ isSuperAdmin, onEdit }: { isSuperAdmin: boolean; onEdit
       if (debouncedSearch) qs.set('search', debouncedSearch)
       if (roleFilter) qs.set('role_filter', roleFilter)
       if (statusFilter) qs.set('status_filter', statusFilter)
-      return api.get<Page<ManagedUser>>(`/users?${qs.toString()}`)
+      return api.get<Page<ManagedUser> | ManagedUser[]>(`/users?${qs.toString()}`).then(asPage)
     },
     [pageSize, sort, debouncedSearch, roleFilter, statusFilter],
   )

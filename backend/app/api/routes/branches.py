@@ -28,3 +28,59 @@ def create_branch(payload: dict, user: CurrentUser = Depends(require_super_admin
         .data[0]
     )
     return row
+
+
+# Business records that block a branch delete, in the order they're reported —
+# (table, singular, plural). `domains` and `students` cascade in the DB, but
+# students are real accounts, so they're checked here too — a branch delete must
+# never silently wipe them. (`domains` are just config labels, left to cascade.)
+_BRANCH_DEPENDENTS: list[tuple[str, str, str]] = [
+    ("profiles", "user", "users"),
+    ("enquiries", "enquiry", "enquiries"),
+    ("enrollments", "enrollment", "enrollments"),
+    ("batches", "batch", "batches"),
+    ("curricula", "curriculum", "curricula"),
+    ("expenses", "expense", "expenses"),
+    ("students", "student", "students"),
+    ("campaigns", "campaign", "campaigns"),
+]
+
+
+@router.delete("/{branch_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_branch(branch_id: str, user: CurrentUser = Depends(require_super_admin)):
+    """Delete a branch — only when it holds no records.
+
+    A branch is referenced by users, enquiries, enrollments, fee records,
+    students and more, almost all without a DB cascade. Rather than destroy that
+    data, we refuse the delete and report what's still in the branch so the admin
+    can move or remove it first. Only an empty branch can be removed.
+    """
+    client = get_service_client()
+
+    existing = client.table("branches").select("id").eq("id", branch_id).execute().data
+    if not existing:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Branch not found")
+
+    blocking: list[str] = []
+    for table, singular, plural in _BRANCH_DEPENDENTS:
+        n = (
+            client.table(table)
+            .select("id", count="exact")
+            .eq("branch_id", branch_id)
+            .limit(1)
+            .execute()
+            .count
+            or 0
+        )
+        if n:
+            blocking.append(f"{n} {singular if n == 1 else plural}")
+
+    if blocking:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "This branch still has " + ", ".join(blocking) + ". "
+            "Move or remove them first, then delete the branch.",
+        )
+
+    # Empty of business data — its domain labels cascade away on delete.
+    client.table("branches").delete().eq("id", branch_id).execute()
